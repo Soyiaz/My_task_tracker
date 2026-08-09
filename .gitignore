@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+tracker.db
+*.db
+*.db.bak*
+files/
+*.code-workspace
+.streamlit/secrets.toml

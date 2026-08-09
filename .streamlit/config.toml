@@ -1,0 +1,67 @@
+# Summer tracker theme.
+#
+# One accent (indigo) carries the app; the five track colours below are the
+# same ones stored on the tracks themselves, so charts, badges and chips all
+# agree. Both modes are defined, so the light/dark toggle in the app menu
+# stays available.
+
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 15
+baseRadius = "10px"
+buttonRadius = "8px"
+showWidgetBorder = true
+showSidebarBorder = true
+headingFontWeights = [700, 650, 620, 600, 600, 600]
+headingFontSizes = ["30px", "23px", "19px", "16px", "15px", "14px"]
+linkUnderline = false
+chartCategoricalColors = [
+  "#6366f1", "#14b8a6", "#f59e0b", "#22c55e", "#f43f5e", "#8b5cf6", "#64748b",
+]
+
+[theme.light]
+primaryColor = "#4f46e5"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f6f7fb"
+codeBackgroundColor = "#f1f2f7"
+textColor = "#15161c"
+linkColor = "#4f46e5"
+borderColor = "#e3e5ee"
+dataframeBorderColor = "#e3e5ee"
+dataframeHeaderBackgroundColor = "#f6f7fb"
+blueColor = "#4f46e5"
+greenColor = "#16a34a"
+yellowColor = "#ca8a04"
+orangeColor = "#ea580c"
+redColor = "#e11d48"
+violetColor = "#7c3aed"
+grayColor = "#64748b"
+
+[theme.dark]
+primaryColor = "#818cf8"
+backgroundColor = "#0f1117"
+secondaryBackgroundColor = "#181b26"
+codeBackgroundColor = "#1d2130"
+textColor = "#e8eaf2"
+linkColor = "#a5b4fc"
+borderColor = "#2a2f42"
+dataframeBorderColor = "#2a2f42"
+dataframeHeaderBackgroundColor = "#181b26"
+blueColor = "#818cf8"
+greenColor = "#4ade80"
+yellowColor = "#facc15"
+orangeColor = "#fb923c"
+redColor = "#fb7185"
+violetColor = "#a78bfa"
+grayColor = "#94a3b8"
+
+[theme.light.sidebar]
+backgroundColor = "#f6f7fb"
+secondaryBackgroundColor = "#eceef6"
+borderColor = "#e3e5ee"
+
+[theme.dark.sidebar]
+backgroundColor = "#0b0d13"
+secondaryBackgroundColor = "#181b26"
+borderColor = "#2a2f42"
