@@ -267,16 +267,20 @@ SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 def save_attachment(owner_kind: str, owner_id: int, uploaded) -> int:
     """Copy a Streamlit upload onto disk and record it. Returns the row id."""
-    db.FILES_DIR.mkdir(exist_ok=True)
+    db.files_dir().mkdir(parents=True, exist_ok=True)
     safe = SAFE.sub("_", uploaded.name)[-80:]
     stored = f"{uuid.uuid4().hex[:12]}_{safe}"
     data = uploaded.getvalue()
-    (db.FILES_DIR / stored).write_bytes(data)
-    return db.execute(
+    (db.files_dir() / stored).write_bytes(data)
+    rid = db.execute(
         "INSERT INTO attachments(owner_kind, owner_id, filename, stored_name, size) "
         "VALUES (?, ?, ?, ?, ?)",
         (owner_kind, int(owner_id), uploaded.name, stored, len(data)),
     )
+    from tracker import cloud
+
+    cloud.push_attachment(stored)
+    return rid
 
 
 def attachments_for(owner_kind: str, owner_id: int) -> pd.DataFrame:
@@ -297,13 +301,23 @@ def attachment_counts(owner_kind: str) -> pd.Series:
 
 
 def attachment_path(stored_name: str) -> Path:
-    return db.FILES_DIR / stored_name
+    path = db.files_dir() / stored_name
+    if not path.exists():
+        # A fresh cloud container starts with an empty disk; the copy of
+        # record lives in the bucket. A no-op locally.
+        from tracker import cloud
+
+        cloud.fetch_attachment(stored_name)
+    return path
 
 
 def delete_attachment(attachment_id: int) -> None:
     row = db.one("SELECT stored_name FROM attachments WHERE id = ?", (int(attachment_id),))
     if row:
-        path = attachment_path(row["stored_name"])
+        path = db.files_dir() / row["stored_name"]
         if path.exists():
             path.unlink()
+        from tracker import cloud
+
+        cloud.drop_attachment(row["stored_name"])
     db.execute("DELETE FROM attachments WHERE id = ?", (int(attachment_id),))

@@ -10,13 +10,17 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from tracker import db
+from tracker import cloud, db
 
 st.set_page_config(
-    page_title="Summer tracker",
+    page_title="Plan tracker",
     page_icon=":material/target:",
     layout="wide",
 )
+
+# In a deployment with login configured this gates the session and points it
+# at the signed-in user's own database; everywhere else it does nothing.
+cloud.activate()
 
 db.init()
 
@@ -111,4 +115,9 @@ with st.sidebar:
     if today >= sunday - timedelta(days=1) and not planning.get_week(monday)["reviewed_on"]:
         st.info("Time to review the week.", icon=":material/rate_review:")
 
+    cloud.account_ui()
+
 nav.run()
+
+# Any write this run made goes back to remote storage (cloud mode only).
+cloud.flush()

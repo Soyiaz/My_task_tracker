@@ -368,7 +368,7 @@ with st.container(border=True):
             icon=":material/download:",
             disabled=not len(ms),
         )
-    st.caption(f"Everything lives in `{db.DB_PATH}`. Back that file up.")
+    st.caption(f"Everything lives in `{db.db_path()}`. Back that file up.")
 
     with st.expander("Rebuild from the taxonomy"):
         st.warning(

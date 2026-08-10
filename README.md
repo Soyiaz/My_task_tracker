@@ -55,6 +55,49 @@ The only file worth editing by hand is `tracker/taxonomy.py`, and only if
 you want to change what a *fresh* database starts with — for instance to
 ship your own template to someone else.
 
+## Hosting it with accounts (optional)
+
+Run locally, the app needs no accounts — your data is a file on your disk.
+Deployed (say on Streamlit Community Cloud), the container's disk is wiped
+on every restart and shared by every visitor, so a plain deployment is only
+good as a resettable demo.
+
+Cloud mode fixes that. When the deployment's secrets contain the two
+sections below, the app gates itself behind **Sign in with Google** and
+gives every account its own database, parked in a free Supabase storage
+bucket so it survives restarts. Visitors can also pick **Just try the
+demo** for the old shared sandbox. Without the secrets, nothing changes —
+local use stays loginless.
+
+Setup, once, all free:
+
+1. **Google login** — in Google Cloud Console create an OAuth 2.0 *Web
+   application* client. Authorized redirect URI:
+   `https://<your-app>.streamlit.app/oauth2callback`. Note the client id
+   and secret.
+2. **Supabase** — create a free project and copy its URL and the
+   `service_role` API key. The storage bucket is created automatically on
+   first use.
+3. **Secrets** — in the deployed app's settings, add:
+
+   ```toml
+   [auth]
+   redirect_uri = "https://<your-app>.streamlit.app/oauth2callback"
+   cookie_secret = "<any long random string>"
+   client_id = "<google client id>"
+   client_secret = "<google client secret>"
+   server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+
+   [supabase]
+   url = "https://<project>.supabase.co"
+   key = "<service_role key>"
+   bucket = "trackers"
+   ```
+
+Honest limits: each user's database is uploaded whole when it changes (it
+is small), and if the same account is open in two places at once the last
+writer wins. Uploaded files are parked in the same bucket.
+
 ## The loop
 
 **Once a week** — open *The week*. Budget the hours across your tracks for

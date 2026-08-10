@@ -20,6 +20,44 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "tracker.db"
 FILES_DIR = ROOT / "files"
 
+
+def _session_value(key: str):
+    """A per-user override set by cloud mode (tracker/cloud.py). Outside a
+    Streamlit session — tests, bare scripts — there is none, and the module
+    paths stand. One process serves every visitor in a deployment, so the
+    override has to live in session state, never in a module global."""
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        if get_script_run_ctx(suppress_warning=True) is None:
+            return None
+        import streamlit as st
+
+        return st.session_state.get(key)
+    except Exception:
+        return None
+
+
+def db_path() -> Path:
+    override = _session_value("_user_db_path")
+    return Path(override) if override else DB_PATH
+
+
+def files_dir() -> Path:
+    override = _session_value("_user_files_dir")
+    return Path(override) if override else FILES_DIR
+
+
+def _mark_dirty() -> None:
+    """Tell cloud mode this user's database changed, so it gets parked in
+    remote storage at the end of the run. A no-op everywhere else."""
+    try:
+        from tracker import cloud
+
+        cloud.mark_dirty()
+    except Exception:
+        pass
+
 SCHEMA_VERSION = 2
 
 SCHEMA = """
@@ -231,7 +269,7 @@ ALL_TABLES = (
 
 @contextmanager
 def connect():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -245,12 +283,15 @@ def execute(sql: str, params: Sequence[Any] = ()) -> int:
     """Run one statement; return the last row id."""
     with connect() as conn:
         cur = conn.execute(sql, params)
-        return cur.lastrowid
+        rid = cur.lastrowid
+    _mark_dirty()
+    return rid
 
 
 def execute_many(sql: str, rows: Iterable[Sequence[Any]]) -> None:
     with connect() as conn:
         conn.executemany(sql, list(rows))
+    _mark_dirty()
 
 
 def query(sql: str, params: Sequence[Any] = ()) -> pd.DataFrame:
@@ -369,7 +410,7 @@ def _add_missing_columns() -> None:
 
 def init() -> None:
     """Create the schema, and lay down the plan the first time."""
-    FILES_DIR.mkdir(exist_ok=True)
+    files_dir().mkdir(parents=True, exist_ok=True)
     with connect() as conn:
         conn.executescript(SCHEMA)
     _add_missing_columns()
@@ -394,6 +435,7 @@ def wipe(keep_log: bool = False) -> None:
                 continue
             conn.execute(f"DELETE FROM {table}")
         conn.execute("DELETE FROM settings")
+    _mark_dirty()
     init()
 
 
