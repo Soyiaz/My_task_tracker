@@ -11,6 +11,7 @@ ui.page_header(
     "each one counts.",
     ":material/checklist:",
 )
+ui.require_tracks()
 
 STATUS_UI = {"todo": "Not started", "doing": "In progress", "done": "Done"}
 UI_STATUS = {v: k for k, v in STATUS_UI.items()}

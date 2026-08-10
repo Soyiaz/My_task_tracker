@@ -20,6 +20,8 @@ from tracker import scoring, structure
 def _domain_picker(key: str, category_id, subcategory_id, current: list[str] | None = None):
     doms = structure.domains()
     names = {r["key"]: r["name"] for r in doms.to_dict("records")}
+    if not names:
+        return []
     suggested = current if current is not None else structure.suggested_domains(
         category_id, subcategory_id
     )

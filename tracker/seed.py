@@ -9,6 +9,18 @@ from __future__ import annotations
 from tracker import db, taxonomy
 
 
+def plant_minimal() -> None:
+    """A blank tracker: just the measuring lenses, no tracks, no plan. What a
+    freshly signed-in cloud user starts from — the structure is theirs to
+    build, and the demo shows a worked example."""
+    for key, name, color, sort in taxonomy.DOMAINS:
+        db.execute(
+            "INSERT INTO domains(key, name, color, target_share, sort) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (key, name, color, 1 / len(taxonomy.DOMAINS), sort),
+        )
+
+
 def plant() -> None:
     for key, name, icon, color, goal, share, sort in taxonomy.TRACKS:
         db.execute(

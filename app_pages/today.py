@@ -22,6 +22,7 @@ ui.page_header(
     f"{e['total_days']}, {e['days_left']} left",
     ":material/wb_sunny:",
 )
+ui.require_tracks()
 
 trk = scoring.tracks()
 if not len(trk):

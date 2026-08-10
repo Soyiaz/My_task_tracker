@@ -280,6 +280,18 @@ def track_report(as_of: date | None = None) -> pd.DataFrame:
             }
         )
 
+    if not rows:
+        # A blank tracker: keep the shape so headline() and the pages can
+        # still do their sums and get honest zeroes.
+        return pd.DataFrame(
+            columns=[
+                "track_id", "key", "track", "icon", "color", "goal",
+                "target_share", "hours", "hours_7d", "expected_hours",
+                "hour_gap", "actual_share", "done", "count", "progress",
+                "expected_progress", "time_score", "milestone_score",
+                "health", "status",
+            ]
+        )
     df = pd.DataFrame(rows)
     df["status"] = df["health"].apply(health_label)
     return df

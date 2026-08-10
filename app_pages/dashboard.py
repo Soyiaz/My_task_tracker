@@ -20,6 +20,7 @@ ui.page_header(
     f"{h['total_days']} · {h['days_left']} days left",
     ":material/speed:",
 )
+ui.require_tracks()
 
 
 # --- the two numbers --------------------------------------------------------

@@ -65,9 +65,12 @@ good as a resettable demo.
 Cloud mode fixes that. When the deployment's secrets contain the two
 sections below, the app gates itself behind **Sign in with Google** and
 gives every account its own database, parked in a free Supabase storage
-bucket so it survives restarts. Visitors can also pick **Just try the
-demo** for the old shared sandbox. Without the secrets, nothing changes —
-local use stays loginless.
+bucket so it survives restarts. A new account starts **blank** — no tracks,
+no template — and every page points to the structure editor until the first
+track exists; the starter plan only appears in the shared **Just try the
+demo** sandbox, which is exactly what it is for: seeing a filled-in tracker
+before building your own. Without the secrets, nothing changes — local use
+stays loginless and starts from the template.
 
 Setup, once, all free:
 

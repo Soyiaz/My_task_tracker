@@ -256,14 +256,16 @@ def edit_form(task_id: int) -> None:
 
     dom_names = structure.domain_names()
     current_domains = [d for d in structure.split(t["domains"]) if d in dom_names]
-    domains = st.pills(
-        "What will it feed?",
-        list(dom_names),
-        format_func=lambda k: dom_names[k],
-        selection_mode="multi",
-        default=current_domains,
-        key=f"ed_dom_{task_id}",
-    )
+    domains = current_domains
+    if dom_names:
+        domains = st.pills(
+            "What will it feed?",
+            list(dom_names),
+            format_func=lambda k: dom_names[k],
+            selection_mode="multi",
+            default=current_domains,
+            key=f"ed_dom_{task_id}",
+        )
     if category_id and not current_domains:
         suggested = structure.suggested_domains(category_id, subcategory_id)
         if suggested:

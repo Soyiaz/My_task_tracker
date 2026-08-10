@@ -14,6 +14,7 @@ ui.page_header(
     "against what the plan asked for.",
     ":material/calendar_month:",
 )
+ui.require_tracks()
 
 FOCUS = ui.FOCUS
 

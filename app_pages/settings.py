@@ -239,81 +239,90 @@ with st.container(border=True):
     st.markdown("**Categories — and what each one asks for**")
     trk_now = scoring.tracks()
     track_names = {r["name"]: int(r["id"]) for r in trk_now.to_dict("records")}
-    picked_track = st.selectbox(
-        "Track to edit", list(track_names), key="structure_cat_track"
-    )
-    tid = track_names[picked_track]
-    field_help = ", ".join(f"`{k}` ({v})" for k, v in structure.FIELD_LABELS.items())
-    domain_help = ", ".join(f"`{k}`" for k in structure.domains()["key"])
-    cats_edit = structure.categories_editable(tid)
-    edited_cats = st.data_editor(
-        cats_edit,
-        key=f"structure_cats_{tid}",
-        hide_index=True,
-        num_rows="dynamic",
-        column_config={
-            "id": None,
-            "key": None,
-            "name": st.column_config.TextColumn("Category", required=True),
-            "requires": st.column_config.TextColumn(
-                "Asks for",
-                help="What the entry form demands before it accepts work "
-                f"here. Comma-separated from: {field_help}. `file` demands "
-                "an upload.",
-            ),
-            "domains": st.column_config.TextColumn(
-                "Usual domains",
-                help="Suggested lenses for work filed here, comma-separated "
-                f"keys: {domain_help}.",
-            ),
-            "sort": st.column_config.NumberColumn("Order", width="small"),
-        },
-    )
-    if st.button(
-        "Save categories",
-        key=f"structure_cats_save_{tid}",
-        type="primary",
-        icon=":material/save:",
-    ):
-        structure.save_categories(tid, edited_cats)
-        st.toast("Categories updated")
-        st.rerun()
-    st.caption(
-        "Deleting a category keeps the tasks and hours filed under it — they "
-        "only lose the label. Unknown field or domain keys are dropped on save."
-    )
-
-    if len(cats_edit):
-        cat_names = {r["name"]: int(r["id"]) for r in cats_edit.to_dict("records")}
-        picked_cat = st.selectbox(
-            "Subcategories of", list(cat_names), key=f"structure_sub_cat_{tid}"
+    if not track_names:
+        st.caption(
+            "No tracks yet — add your first one above and save. Then it can "
+            "be given categories here."
         )
-        cid = cat_names[picked_cat]
-        subs_edit = structure.subcategories_editable(cid)
-        edited_subs = st.data_editor(
-            subs_edit,
-            key=f"structure_subs_{cid}",
+    else:
+        picked_track = st.selectbox(
+            "Track to edit", list(track_names), key="structure_cat_track"
+        )
+        tid = track_names[picked_track]
+        field_help = ", ".join(
+            f"`{k}` ({v})" for k, v in structure.FIELD_LABELS.items()
+        )
+        domain_help = ", ".join(f"`{k}`" for k in structure.domains()["key"])
+        cats_edit = structure.categories_editable(tid)
+        edited_cats = st.data_editor(
+            cats_edit,
+            key=f"structure_cats_{tid}",
             hide_index=True,
             num_rows="dynamic",
             column_config={
                 "id": None,
                 "key": None,
-                "name": st.column_config.TextColumn("Subcategory", required=True),
+                "name": st.column_config.TextColumn("Category", required=True),
+                "requires": st.column_config.TextColumn(
+                    "Asks for",
+                    help="What the entry form demands before it accepts work "
+                    f"here. Comma-separated from: {field_help}. `file` demands "
+                    "an upload.",
+                ),
                 "domains": st.column_config.TextColumn(
-                    "Usual domains", help=f"Comma-separated keys: {domain_help}."
+                    "Usual domains",
+                    help="Suggested lenses for work filed here, comma-separated "
+                    f"keys: {domain_help}.",
                 ),
                 "sort": st.column_config.NumberColumn("Order", width="small"),
             },
         )
         if st.button(
-            "Save subcategories",
-            key=f"structure_subs_save_{cid}",
+            "Save categories",
+            key=f"structure_cats_save_{tid}",
             type="primary",
             icon=":material/save:",
         ):
-            structure.save_subcategories(cid, edited_subs)
-            st.toast("Subcategories updated")
+            structure.save_categories(tid, edited_cats)
+            st.toast("Categories updated")
             st.rerun()
+        st.caption(
+            "Deleting a category keeps the tasks and hours filed under it — "
+            "they only lose the label. Unknown field or domain keys are "
+            "dropped on save."
+        )
+
+        if len(cats_edit):
+            cat_names = {r["name"]: int(r["id"]) for r in cats_edit.to_dict("records")}
+            picked_cat = st.selectbox(
+                "Subcategories of", list(cat_names), key=f"structure_sub_cat_{tid}"
+            )
+            cid = cat_names[picked_cat]
+            subs_edit = structure.subcategories_editable(cid)
+            edited_subs = st.data_editor(
+                subs_edit,
+                key=f"structure_subs_{cid}",
+                hide_index=True,
+                num_rows="dynamic",
+                column_config={
+                    "id": None,
+                    "key": None,
+                    "name": st.column_config.TextColumn("Subcategory", required=True),
+                    "domains": st.column_config.TextColumn(
+                        "Usual domains", help=f"Comma-separated keys: {domain_help}."
+                    ),
+                    "sort": st.column_config.NumberColumn("Order", width="small"),
+                },
+            )
+            if st.button(
+                "Save subcategories",
+                key=f"structure_subs_save_{cid}",
+                type="primary",
+                icon=":material/save:",
+            ):
+                structure.save_subcategories(cid, edited_subs)
+                st.toast("Subcategories updated")
+                st.rerun()
 
 
 with st.container(border=True):

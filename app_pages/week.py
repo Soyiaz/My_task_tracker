@@ -17,6 +17,7 @@ ui.page_header(
     "Budget the hours, name the work, then come back on Sunday and say how it went.",
     ":material/date_range:",
 )
+ui.require_tracks()
 
 mondays = scoring.plan_weeks()
 this_monday = scoring.week_start(date.today())

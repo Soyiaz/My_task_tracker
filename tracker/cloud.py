@@ -161,14 +161,25 @@ def activate() -> None:
     if state.get(K_UID) != uid:
         work.mkdir(parents=True, exist_ok=True)
         filesdir.mkdir(parents=True, exist_ok=True)
+        brand_new = False
         if not dbfile.exists():
             remote = _get(f"{uid}/tracker.db")
             if remote:
                 dbfile.write_bytes(remote)
+            else:
+                brand_new = True
         state[K_UID] = uid
         state[K_DB] = str(dbfile)
         state[K_FILES] = str(filesdir)
         state.pop(K_DIRTY, None)
+        if brand_new:
+            # A new account starts blank — the structure is theirs to build,
+            # and the demo is the worked example. Only the measuring lenses
+            # are planted, and even those are editable.
+            from tracker import db, seed
+
+            db.init(plant=False)
+            seed.plant_minimal()
 
 
 def _landing() -> None:
@@ -197,9 +208,11 @@ def _landing() -> None:
             _state()[K_DEMO] = True
             st.rerun()
     st.caption(
-        "The demo is a shared sandbox: everyone sees the same data and it "
-        "resets whenever the app restarts. Sign in for a tracker of your own — "
-        "or clone the repo and run it locally, where no account is needed."
+        "Signing in starts you with a blank tracker — you build your own "
+        "tracks and categories in Settings. Want to see how a filled-in one "
+        "works first? The demo is a shared sandbox with an example plan: "
+        "everyone sees the same data and it resets whenever the app restarts. "
+        "You can also clone the repo and run it locally, no account needed."
     )
 
 

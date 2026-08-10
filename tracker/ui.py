@@ -112,6 +112,28 @@ def attainment_badge(value: float, label: str | None = None) -> None:
         st.badge(text, icon=":material/trending_down:", color="red")
 
 
+def require_tracks() -> None:
+    """Stop a page early while the tracker is still blank — everything on it
+    presumes at least one track. Settings stays reachable to fix that."""
+    if len(scoring.tracks()):
+        return
+    st.info(
+        "Your tracker is blank — no tracks yet. A track is a big area of "
+        "your plan (a job, a skill, a project); open **Settings** and build "
+        "your own under *The structure — make it yours*.",
+        icon=":material/foundation:",
+    )
+    try:
+        st.page_link(
+            "app_pages/settings.py", label="Go to Settings", icon=":material/tune:"
+        )
+    except Exception:
+        # Outside st.navigation (bare page runs, tests) the link has no
+        # route to point at; the sidebar still gets people there.
+        pass
+    st.stop()
+
+
 def page_header(title: str, subtitle: str, icon: str) -> None:
     st.title(f"{icon} {title}")
     st.caption(subtitle)

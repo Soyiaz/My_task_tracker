@@ -408,9 +408,18 @@ def _add_missing_columns() -> None:
                 execute(f"ALTER TABLE {table} ADD COLUMN {name} {spec}")
 
 
-def init() -> None:
-    """Create the schema, and lay down the plan the first time."""
+def init(plant: bool = True) -> None:
+    """Create the schema, and lay down the starter plan the first time.
+
+    Seeding happens only when the database is genuinely new — a tracker whose
+    owner deleted every track on purpose stays empty rather than having the
+    template grow back overnight.
+    """
     files_dir().mkdir(parents=True, exist_ok=True)
+    fresh = (
+        one("SELECT name FROM sqlite_master WHERE type='table' AND name='tracks'")
+        is None
+    )
     with connect() as conn:
         conn.executescript(SCHEMA)
     _add_missing_columns()
@@ -419,7 +428,7 @@ def init() -> None:
         if one("SELECT value FROM settings WHERE key = ?", (key,)) is None:
             set_setting(key, value)
 
-    if one("SELECT 1 FROM tracks LIMIT 1") is None:
+    if plant and fresh:
         from tracker import seed
 
         seed.plant()
@@ -436,7 +445,10 @@ def wipe(keep_log: bool = False) -> None:
             conn.execute(f"DELETE FROM {table}")
         conn.execute("DELETE FROM settings")
     _mark_dirty()
-    init()
+    init(plant=False)
+    from tracker import seed
+
+    seed.plant()
 
 
 # Kept for the Settings page, which calls it by the older name.
