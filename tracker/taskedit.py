@@ -7,7 +7,7 @@ about it. Keeping both here means a fix lands on all three pages at once.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -134,6 +134,28 @@ def days_picker(key: str, default: date | None = None) -> list[date]:
     return keep
 
 
+def start_time_question(key: str, current: str | None = None) -> time | None:
+    """The optional 'when on the clock?' — feeds the Calendar page.
+
+    Times live in settings-JSON (``planning.task_times``), not on the task
+    row, so this stays an optional extra rather than a schema change.
+    """
+    value = None
+    if current:
+        try:
+            value = time.fromisoformat(current)
+        except ValueError:
+            value = None
+    return st.time_input(
+        "Start time (optional)",
+        value=value,
+        key=key,
+        step=timedelta(minutes=15),
+        help="Puts the task on the Calendar page's clock. Leave it empty to "
+        "decide later — the task still shows on its day.",
+    )
+
+
 def urgent_toggle(key: str, value: bool = False) -> bool:
     return st.toggle(
         "Urgent",
@@ -166,6 +188,9 @@ def new_task_form(
         )
         urgent = urgent_toggle(f"{key_prefix}_urgent")
     day = day_picker(f"{key_prefix}_when", default_day, default_day)
+    start = None
+    if day is not None:
+        start = start_time_question(f"{key_prefix}_start")
 
     if st.button(
         button_label,
@@ -187,6 +212,8 @@ def new_task_form(
             domains=entry["domains"],
             urgent=urgent,
         )
+        if day is not None and start is not None:
+            planning.set_task_time(task_id, start.strftime("%H:%M"))
         st.toast("Task added" + (" · urgent" if urgent else ""))
         st.rerun()
     return None
@@ -285,6 +312,11 @@ def edit_form(task_id: int) -> None:
     )
     current_day = date.fromisoformat(t["day"]) if t["day"] else None
     when = day_picker(f"ed_day_{task_id}", current_day, monday)
+    start = None
+    if when is not None:
+        start = start_time_question(
+            f"ed_start_{task_id}", planning.task_times().get(task_id)
+        )
     status_label = st.segmented_control(
         "Status",
         list(UI_STATUS),
@@ -333,6 +365,11 @@ def edit_form(task_id: int) -> None:
                     fields["milestone_kind"] = None
                     fields["milestone_id"] = None
                 planning.update_task(task_id, **fields)
+                # a task taken off its day loses its clock slot too
+                planning.set_task_time(
+                    task_id,
+                    start.strftime("%H:%M") if (when is not None and start) else None,
+                )
                 st.toast("Task updated")
                 st.rerun()
         if st.button(

@@ -295,6 +295,14 @@ with work_tab:
             f"wk_when_{monday}",
             max(monday, min(date.today(), monday + timedelta(days=6))),
         )
+        batch_start = None
+        if day_values:
+            batch_start = taskedit.start_time_question(f"wk_start_{monday}")
+            if batch_start and len(day_values) > 1:
+                st.caption(
+                    f"Each day's copy starts at {batch_start:%H:%M} — nudge "
+                    "individual days later on the Calendar page."
+                )
         batch_urgent = taskedit.urgent_toggle(f"wk_urgent_{monday}")
         st.caption(
             "Unscheduled work waits in this week's list; pull it into a day "
@@ -400,32 +408,40 @@ with work_tab:
             key=f"wk_add_{monday}",
         ):
             for when in target_days:
+                made = []
                 for r, mkind, mins in selected:
-                    planning.add_task(
-                        monday,
-                        track_id,
-                        r["name"],
-                        mins,
-                        day=when,
-                        milestone_kind=mkind,
-                        milestone_id=int(r["id"]),
-                        category_id=category_id,
-                        subcategory_id=subcategory_id,
-                        domains=domain_str,
-                        urgent=batch_urgent,
+                    made.append(
+                        planning.add_task(
+                            monday,
+                            track_id,
+                            r["name"],
+                            mins,
+                            day=when,
+                            milestone_kind=mkind,
+                            milestone_id=int(r["id"]),
+                            category_id=category_id,
+                            subcategory_id=subcategory_id,
+                            domains=domain_str,
+                            urgent=batch_urgent,
+                        )
                     )
                 if free_title.strip():
-                    planning.add_task(
-                        monday,
-                        track_id,
-                        free_title.strip(),
-                        int(free_minutes),
-                        day=when,
-                        category_id=category_id,
-                        subcategory_id=subcategory_id,
-                        domains=domain_str,
-                        urgent=batch_urgent,
+                    made.append(
+                        planning.add_task(
+                            monday,
+                            track_id,
+                            free_title.strip(),
+                            int(free_minutes),
+                            day=when,
+                            category_id=category_id,
+                            subcategory_id=subcategory_id,
+                            domains=domain_str,
+                            urgent=batch_urgent,
+                        )
                     )
+                if when is not None and batch_start is not None:
+                    for tid in made:
+                        planning.set_task_time(tid, batch_start.strftime("%H:%M"))
             st.toast(f"{total_new} added")
             st.rerun()
 

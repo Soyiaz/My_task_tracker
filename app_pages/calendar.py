@@ -62,6 +62,10 @@ def _clear_time(task_id: int, wkey: str) -> None:
     st.session_state.pop(wkey, None)
 
 
+def _pull_onto_day(task_id: int, day: date) -> None:
+    planning.update_task(task_id, day=day)
+
+
 def _parse(hhmm: str | None) -> time | None:
     try:
         return time.fromisoformat(hhmm) if hhmm else None
@@ -246,6 +250,32 @@ with day_tab:
                 _clock_chart(blocks, [_day_label(picked)], legend=False),
                 width="stretch",
             )
+
+    # tasks this week that have no day yet can be pulled onto this one
+    loose = planning.tasks(monday=monday, unscheduled_only=True)
+    if len(loose):
+        with st.expander(
+            f"This week's tasks without a day ({len(loose)})",
+            icon=":material/move_down:",
+        ):
+            for t in loose.to_dict("records"):
+                tid = int(t["id"])
+                row = st.container(horizontal=True, vertical_alignment="center")
+                with row:
+                    st.markdown(
+                        f"**{t['title']}**  \n"
+                        f":small[{t['track']}"
+                        + (f" · {t['category']}" if t["category"] else "")
+                        + f" · {ui.hours_text(int(t['planned_minutes']))}]",
+                        width="stretch",
+                    )
+                    st.button(
+                        f"Do it {picked:%a %d}",
+                        key=f"cal_pull_{tid}",
+                        icon=":material/today:",
+                        on_click=_pull_onto_day,
+                        args=(tid, picked),
+                    )
 
 with week_tab:
     st.caption(f"{scoring.week_label(monday)} · times are set per day on the first tab.")
