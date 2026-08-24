@@ -35,6 +35,11 @@ nav = st.navigation(
             ),
             st.Page("app_pages/week.py", title="The week", icon=":material/date_range:"),
             st.Page(
+                "app_pages/calendar.py",
+                title="Calendar",
+                icon=":material/calendar_clock:",
+            ),
+            st.Page(
                 "app_pages/todo.py", title="To do", icon=":material/checklist_rtl:"
             ),
         ],

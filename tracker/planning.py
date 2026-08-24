@@ -8,6 +8,7 @@ be scheduled onto a day, and time logged against it.
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 import pandas as pd
@@ -458,3 +459,37 @@ def plan_history(as_of: date | None = None) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+# --- time of day ------------------------------------------------------------
+# Where on the clock a task sits. Stored as one JSON value in the existing
+# settings table ({"<task_id>": "HH:MM"}) precisely so the schema stays
+# untouched -- databases already parked in the cloud keep working as they are.
+
+
+def task_times() -> dict[int, str]:
+    raw = db.get_setting("task_times") or "{}"
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        data = {}
+    out = {}
+    for k, v in data.items():
+        try:
+            out[int(k)] = str(v)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def set_task_time(task_id: int, hhmm: str | None) -> None:
+    times = task_times()
+    if hhmm is None:
+        times.pop(int(task_id), None)
+    else:
+        times[int(task_id)] = hhmm
+    # Times for tasks that no longer exist are dead weight -- drop them while
+    # we are writing anyway.
+    alive = {int(r["id"]) for r in db.query("SELECT id FROM tasks").to_dict("records")}
+    times = {k: v for k, v in times.items() if k in alive}
+    db.set_setting("task_times", json.dumps({str(k): v for k, v in sorted(times.items())}))

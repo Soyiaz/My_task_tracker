@@ -140,6 +140,7 @@ by domains should admit what it could not classify.
 | --- | --- |
 | **Today** | The day's plan, the stopwatch, per-task logging, and today's entries. |
 | **The week** | Budget → the work → review. The planning page. |
+| **Calendar** | The day on a clock. Give each scheduled task a start time and see the day (and the whole week) as timed blocks. |
 | **To do** | Every task from every week in one list. Add new ones, mark not started / in progress / done, flag what is urgent, and filter by track, status, scope or name. |
 | **Dashboard** | Goal completion, on-pace score, which track needs the next block of work, whether the planning habit is holding, and the charts behind all of it. |
 | **Reports** | Week, month, whole plan — hours registered against target and against the budget you set, with what got finished. |
