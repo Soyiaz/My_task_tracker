@@ -101,6 +101,22 @@ Honest limits: each user's database is uploaded whole when it changes (it
 is small), and if the same account is open in two places at once the last
 writer wins. Uploaded files are parked in the same bucket.
 
+### The journal (optional)
+
+The Journal page keeps its entries in a [Neon](https://neon.tech) Postgres
+database — free tier, no card. Create a project, copy its connection
+string, and add one more section to the secrets (or set `NEON_URL` in the
+environment for a local install):
+
+```toml
+[neon]
+url = "postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
+```
+
+Without it, the Journal page shows setup instructions and the rest of the
+app is unaffected. Entries are keyed by the same anonymous account id the
+tracker uses; the shared demo gets no journal.
+
 ## The loop
 
 **Once a week** — open *The week*. Budget the hours across your tracks for
@@ -141,6 +157,7 @@ by domains should admit what it could not classify.
 | **Today** | The day's plan, the stopwatch, per-task logging, and today's entries. |
 | **The week** | Budget → the work → review. The planning page. |
 | **Calendar** | The day on a clock. Give each scheduled task a start time and see the day (and the whole week) as timed blocks. |
+| **Journal** | A six-question morning check-in, answered like a chat, with an archive of every day. Lives in its own Neon Postgres database (see below). |
 | **To do** | Every task from every week in one list. Add new ones, mark not started / in progress / done, flag what is urgent, and filter by track, status, scope or name. |
 | **Dashboard** | Goal completion, on-pace score, which track needs the next block of work, whether the planning habit is holding, and the charts behind all of it. |
 | **Reports** | Week, month, whole plan — hours registered against target and against the budget you set, with what got finished. |

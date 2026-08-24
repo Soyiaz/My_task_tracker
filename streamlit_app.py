@@ -40,6 +40,11 @@ nav = st.navigation(
                 icon=":material/calendar_clock:",
             ),
             st.Page(
+                "app_pages/journal.py",
+                title="Journal",
+                icon=":material/auto_stories:",
+            ),
+            st.Page(
                 "app_pages/todo.py", title="To do", icon=":material/checklist_rtl:"
             ),
         ],
