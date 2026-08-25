@@ -29,6 +29,8 @@ MENU = (
     "What now?\n\n"
     "journal — write today's entry\n"
     "read — read a day you wrote\n"
+    "edit — change one answer of a day\n"
+    "delete — remove a day entirely\n"
     "days — the days you have written\n"
     "logout — switch accounts"
 )
@@ -300,6 +302,14 @@ def handle_text(chat_id: int, text: str) -> str:
             c["stage"] = "read_day"
             _save_chat(c)
             return "Which day? Send a date like 2026-08-24, or today / yesterday."
+        if cmd == "edit":
+            c["stage"] = "edit_day"
+            _save_chat(c)
+            return "Edit which day? Send a date like 2026-08-24, or today / yesterday."
+        if cmd == "delete":
+            c["stage"] = "del_day"
+            _save_chat(c)
+            return "Delete which day? Send a date like 2026-08-24, or today / yesterday."
         if cmd == "days":
             days = _recent_days(c["uid"])
             if not days:
@@ -328,6 +338,87 @@ def handle_text(chat_id: int, text: str) -> str:
             )
             return f"Nothing written on {d.isoformat()}.{hint}\n\n{MENU}"
         return _format_entry(entry)
+
+    if c["stage"] in ("edit_day", "del_day"):
+        if cmd == "cancel":
+            c["stage"] = "menu"
+            c["answers"] = {}
+            _save_chat(c)
+            return MENU
+        d = _parse_day(t)
+        if d is None:
+            return "Send a date like 2026-08-24, or today / yesterday. (cancel to stop)"
+        entry = journal.entry_for(c["uid"], d)
+        if entry is None:
+            days = _recent_days(c["uid"], 5)
+            hint = (
+                "\nDays you did write: " + ", ".join(x.isoformat() for x in days)
+                if days
+                else ""
+            )
+            c["stage"] = "menu"
+            _save_chat(c)
+            return f"Nothing written on {d.isoformat()}.{hint}\n\n{MENU}"
+        c["answers"] = {"_day": d.isoformat()}
+        if c["stage"] == "del_day":
+            c["stage"] = "del_confirm"
+            _save_chat(c)
+            return (
+                f"{_format_entry(entry)}\n\n"
+                "Delete this whole day? There is no undo."
+            )
+        c["stage"] = "edit_q"
+        _save_chat(c)
+        numbered = "\n".join(
+            f"{i + 1}. {label} — {str(entry.get(k, '') or '')[:60]}"
+            for i, (k, _, label, _) in enumerate(journal.QUESTIONS)
+        )
+        return f"{d:%A %d %B}. Which one do you want to change?\n\n{numbered}"
+
+    if c["stage"] == "del_confirm":
+        d = date.fromisoformat(c["answers"]["_day"])
+        c["stage"] = "menu"
+        c["answers"] = {}
+        _save_chat(c)
+        if cmd == "yes, delete":
+            journal.delete_entry(c["uid"], d)
+            return f"{d.isoformat()} deleted.\n\n{MENU}"
+        return f"Kept. Nothing deleted.\n\n{MENU}"
+
+    if c["stage"] == "edit_q":
+        if cmd == "cancel":
+            c["stage"] = "menu"
+            c["answers"] = {}
+            _save_chat(c)
+            return MENU
+        if t not in {str(i) for i in range(1, len(journal.KEYS) + 1)}:
+            return f"Pick a number, 1 to {len(journal.KEYS)}. (cancel to stop)"
+        k, _, label, _ = journal.QUESTIONS[int(t) - 1]
+        d = date.fromisoformat(c["answers"]["_day"])
+        entry = journal.entry_for(c["uid"], d)
+        current = str((entry or {}).get(k, "") or "")
+        c["answers"]["_q"] = k
+        c["stage"] = "edit_text"
+        _save_chat(c)
+        return f"New text for “{label}”.\nIt currently says:\n{current or '(empty)'}"
+
+    if c["stage"] == "edit_text":
+        if cmd == "cancel":
+            c["stage"] = "menu"
+            c["answers"] = {}
+            _save_chat(c)
+            return MENU
+        d = date.fromisoformat(c["answers"]["_day"])
+        k = c["answers"]["_q"]
+        entry = journal.entry_for(c["uid"], d) or {}
+        updated = {key: str(entry.get(key, "") or "") for key in journal.KEYS}
+        updated[k] = t
+        journal.save_entry(c["uid"], d, updated)
+        c["stage"] = "menu"
+        c["answers"] = {}
+        _save_chat(c)
+        label = next(lbl for key, _, lbl, _ in journal.QUESTIONS if key == k)
+        return f"“{label}” on {d.isoformat()} updated.\n\n{MENU}"
 
     if c["stage"].startswith("q"):
         if cmd == "cancel":
@@ -379,10 +470,17 @@ def _keyboard(stage: str) -> dict:
     if stage == "auth":
         rows = [["signup", "login"]]
     elif stage == "menu":
-        rows = [["journal", "read"], ["days", "logout"]]
-    elif stage == "read_day":
+        rows = [["journal", "read"], ["edit", "delete"], ["days", "logout"]]
+    elif stage in ("read_day", "edit_day", "del_day"):
         rows = [["today", "yesterday"], ["cancel"]]
-    elif stage.startswith("q"):
+    elif stage == "edit_q":
+        n = len(journal.KEYS)
+        rows = [[str(i) for i in range(1, n // 2 + 1)],
+                [str(i) for i in range(n // 2 + 1, n + 1)],
+                ["cancel"]]
+    elif stage == "del_confirm":
+        rows = [["yes, delete", "cancel"]]
+    elif stage == "edit_text" or stage.startswith("q"):
         rows = [["cancel"]]
     if rows is None:  # typing a code, an email or a password — no buttons
         return {"remove_keyboard": True}

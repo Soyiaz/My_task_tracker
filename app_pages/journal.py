@@ -65,7 +65,7 @@ today_tab, archive_tab = st.tabs(
 
 
 def show_entry(entry: dict, key_prefix: str, deletable: bool = False) -> None:
-    """One journaled day, rendered the same everywhere."""
+    """One journaled day, rendered the same everywhere — editable in place."""
     d = entry["day"]
     d = d if isinstance(d, date) else date.fromisoformat(str(d))
     with st.container(border=True):
@@ -78,6 +78,24 @@ def show_entry(entry: dict, key_prefix: str, deletable: bool = False) -> None:
                 icon=":material/event:",
                 color="green" if ago == 0 else "gray",
             )
+            with st.popover(":material/edit:", help="Edit this entry"):
+                edited = {}
+                for k, _, label, icon in journal.QUESTIONS:
+                    edited[k] = st.text_area(
+                        f"{icon} {label}",
+                        value=str(entry.get(k, "") or ""),
+                        key=f"{key_prefix}_edit_{d}_{k}",
+                        height=80,
+                    )
+                if st.button(
+                    "Save changes",
+                    key=f"{key_prefix}_editsave_{d}",
+                    type="primary",
+                    icon=":material/save:",
+                ):
+                    journal.save_entry(uid, d, edited)
+                    st.toast(f"{d:%d %b} updated")
+                    st.rerun()
             if deletable:
                 with st.popover(":material/delete:", help="Delete this entry"):
                     st.caption("This deletes the whole day. There is no undo.")
@@ -106,8 +124,11 @@ with today_tab:
     rewriting = st.session_state.get("j_rewrite", False)
 
     if existing and not rewriting:
-        st.caption("Today is already written. It can be rewritten until midnight.")
-        show_entry(existing, "today")
+        st.caption(
+            "Today is already written. Fix a line with the pencil, or rewrite "
+            "the whole thing below."
+        )
+        show_entry(existing, "today", deletable=True)
         if st.button("Rewrite today", icon=":material/edit:", key="j_redo"):
             st.session_state.j_rewrite = True
             st.session_state.j_answers = {}
