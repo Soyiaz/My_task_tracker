@@ -373,12 +373,42 @@ def _api(method: str, **params):
     return r.json()
 
 
+def _keyboard(stage: str) -> dict:
+    """Tappable buttons matched to where the conversation stands."""
+    rows = None
+    if stage == "auth":
+        rows = [["signup", "login"]]
+    elif stage == "menu":
+        rows = [["journal", "read"], ["days", "logout"]]
+    elif stage == "read_day":
+        rows = [["today", "yesterday"], ["cancel"]]
+    elif stage.startswith("q"):
+        rows = [["cancel"]]
+    if rows is None:  # typing a code, an email or a password — no buttons
+        return {"remove_keyboard": True}
+    return {
+        "keyboard": [[{"text": b} for b in row] for row in rows],
+        "resize_keyboard": True,
+        "is_persistent": True,
+    }
+
+
 def _loop() -> None:
+    print("[journal-bot] polling started")
     ensure_schema()
     offset = int(_get_state("tg_offset") or 0)
     while True:
         try:
             resp = _api("getUpdates", offset=offset + 1, timeout=POLL_TIMEOUT)
+            if not resp.get("ok"):
+                # 409 = another poller holds the line (an old container, or a
+                # local run) — say so in the logs instead of failing silently.
+                print(
+                    f"[journal-bot] telegram error {resp.get('error_code')}: "
+                    f"{resp.get('description')}"
+                )
+                _time.sleep(30 if resp.get("error_code") == 409 else 10)
+                continue
             for u in resp.get("result", []):
                 offset = max(offset, int(u["update_id"]))
                 msg = u.get("message") or {}
@@ -388,12 +418,21 @@ def _loop() -> None:
                     continue
                 try:
                     reply = handle_text(int(chat_id), text)
+                    stage = _chat(int(chat_id))["stage"]
                 except Exception as e:  # a broken turn must not kill the bot
+                    print(f"[journal-bot] turn failed: {type(e).__name__}: {e}")
                     reply = f"Something went wrong on my side ({type(e).__name__}). Try again."
-                _api("sendMessage", chat_id=chat_id, text=reply)
+                    stage = "menu"
+                _api(
+                    "sendMessage",
+                    chat_id=chat_id,
+                    text=reply,
+                    reply_markup=_keyboard(stage),
+                )
             if resp.get("result"):
                 _set_state("tg_offset", str(offset))
-        except Exception:
+        except Exception as e:
+            print(f"[journal-bot] poll hiccup: {type(e).__name__}: {e}")
             _time.sleep(5)  # network hiccup — breathe, then poll again
 
 
