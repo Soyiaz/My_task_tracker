@@ -117,6 +117,28 @@ Without it, the Journal page shows setup instructions and the rest of the
 app is unaffected. Entries are keyed by the same anonymous account id the
 tracker uses; the shared demo gets no journal.
 
+### The Telegram bot (optional)
+
+The same journal can be written from Telegram. Make a bot with
+[@BotFather](https://t.me/BotFather), then add to the secrets:
+
+```toml
+[telegram]
+token = "<the token BotFather gives you>"
+access_code = "<a code every new chat must send before the bot answers>"
+```
+
+The bot runs as a background thread inside the deployed app — no extra
+hosting — and stores every conversation's state in Neon, so a reboot loses
+nothing. New chats must pass the access code, then sign up with an email
+and password; the email decides which journal entries land in (use the
+website's Google email and both write the same journal). Commands:
+`journal`, `read`, `days`, `logout`.
+
+Honest limit: the bot is awake only while the app is awake. Community
+Cloud puts apps to sleep after ~12 h without visitors; a free uptime
+pinger (e.g. cron-job.org hitting the app URL) keeps it always on.
+
 ## The loop
 
 **Once a week** — open *The week*. Budget the hours across your tracks for

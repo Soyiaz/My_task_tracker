@@ -24,6 +24,16 @@ cloud.activate()
 
 db.init()
 
+# The Telegram journal bot rides along inside this process — a daemon thread
+# that long-polls while the app is awake. Does nothing unless [telegram] and
+# [neon] are both in the secrets.
+try:
+    from tracker import bot
+
+    bot.ensure_running()
+except Exception:
+    pass
+
 # Imported after init so the schema exists before anything queries it.
 from tracker import planning, scoring, ui  # noqa: E402
 
