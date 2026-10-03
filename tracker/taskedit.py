@@ -3,6 +3,10 @@
 Today, The week and To do all show the same rows, so they all get the same
 two controls: a flag for urgency, and a dialog that can change anything else
 about it. Keeping both here means a fix lands on all three pages at once.
+
+Every plan gets a date *and* a time of day. The forms no longer offer an
+"unscheduled" escape hatch: a new task defaults to today and to the next
+free slot on that day's calendar, and you move it from there.
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ from datetime import date, time, timedelta
 import pandas as pd
 import streamlit as st
 
-from tracker import entryform, planning, scoring, structure, ui
+from tracker import agenda, entryform, planning, scoring, structure, ui
 
 STATUS_UI = {
     "todo": "Not started",
@@ -39,22 +43,14 @@ def urgent_button(task: dict, key_prefix: str) -> None:
         st.rerun()
 
 
-def day_picker(key: str, current: date | None, default: date | None = None) -> date | None:
-    """Any date at all, or none.
+def day_picker(key: str, current: date | None, default: date | None = None) -> date:
+    """Any date at all — but always a date.
 
     Weeks are worked out from the day rather than the other way round, so
     there is no reason to pen you into the seven days of whichever week the
     task happens to sit in — pick the date, and the task files itself under
     the matching week.
     """
-    scheduled = st.segmented_control(
-        "When",
-        ["A day", "Unscheduled"],
-        default="A day" if current else "Unscheduled",
-        key=f"{key}_mode",
-    )
-    if scheduled == "Unscheduled":
-        return None
     chosen = st.date_input(
         "Day",
         value=current or default or date.today(),
@@ -63,15 +59,16 @@ def day_picker(key: str, current: date | None, default: date | None = None) -> d
     )
     if isinstance(chosen, (list, tuple)):
         chosen = chosen[0] if chosen else None
-    if chosen:
-        monday = scoring.week_start(chosen)
-        if monday != scoring.week_start(date.today()):
-            st.caption(f"Files under {scoring.week_label(monday)}.")
+    if not isinstance(chosen, date):
+        chosen = current or default or date.today()
+    monday = scoring.week_start(chosen)
+    if monday != scoring.week_start(date.today()):
+        st.caption(f"Files under {scoring.week_label(monday)}.")
     return chosen
 
 
 def days_picker(key: str, default: date | None = None) -> list[date]:
-    """One day, a span of days, or none at all.
+    """One day or a span of days — never none.
 
     Planning a week you often mean "work on this Tuesday, Wednesday and
     Friday". Pick the span on the calendar and then drop any day inside it you
@@ -80,21 +77,18 @@ def days_picker(key: str, default: date | None = None) -> list[date]:
     """
     mode = st.segmented_control(
         "When",
-        ["A day", "Several days", "Unscheduled"],
-        default="Unscheduled",
+        ["A day", "Several days"],
+        default="A day",
         key=f"{key}_mode",
     )
-    if not mode or mode == "Unscheduled":
-        return []
-
-    if mode == "A day":
+    if not mode or mode == "A day":
         chosen = st.date_input(
             "Day",
             value=default or date.today(),
             format="YYYY-MM-DD",
             key=f"{key}_date",
         )
-        return [chosen] if isinstance(chosen, date) else []
+        return [chosen] if isinstance(chosen, date) else [default or date.today()]
 
     span_value = st.date_input(
         "From and to",
@@ -134,26 +128,28 @@ def days_picker(key: str, default: date | None = None) -> list[date]:
     return keep
 
 
-def start_time_question(key: str, current: str | None = None) -> time | None:
-    """The optional 'when on the clock?' — feeds the Calendar page.
-
-    Times live in settings-JSON (``planning.task_times``), not on the task
-    row, so this stays an optional extra rather than a schema change.
-    """
+def start_time_question(
+    key: str, current: str | None = None, suggested: time | None = None
+) -> time:
+    """When on the clock. Feeds the Calendar page, and is always answered:
+    it starts at the task's existing time, or at the next free slot."""
     value = None
     if current:
         try:
             value = time.fromisoformat(current)
         except ValueError:
             value = None
-    return st.time_input(
-        "Start time (optional)",
+    if value is None:
+        value = suggested or time(9, 0)
+    got = st.time_input(
+        "Start time",
         value=value,
         key=key,
         step=timedelta(minutes=15),
-        help="Puts the task on the Calendar page's clock. Leave it empty to "
-        "decide later — the task still shows on its day.",
+        help="Where the task sits on the Calendar page's clock. It starts at "
+        "the next free slot of that day — change it if you like.",
     )
+    return got or value
 
 
 def urgent_toggle(key: str, value: bool = False) -> bool:
@@ -171,7 +167,7 @@ def new_task_form(
     default_day: date | None = None,
     button_label: str = "Add task",
 ) -> int | None:
-    """Create one task, filed properly, from anywhere.
+    """Create one task, filed properly and placed on the clock, from anywhere.
 
     The same control on Today, The week and To do, so a task made in one place
     is not thinner than one made in another.
@@ -187,10 +183,12 @@ def new_task_form(
             key=f"{key_prefix}_minutes",
         )
         urgent = urgent_toggle(f"{key_prefix}_urgent")
-    day = day_picker(f"{key_prefix}_when", default_day, default_day)
-    start = None
-    if day is not None:
-        start = start_time_question(f"{key_prefix}_start")
+    with st.container(horizontal=True, vertical_alignment="bottom"):
+        day = day_picker(f"{key_prefix}_when", default_day, default_day)
+        start = start_time_question(
+            f"{key_prefix}_start",
+            suggested=agenda.next_free_time(day, int(minutes)),
+        )
 
     if st.button(
         button_label,
@@ -212,9 +210,10 @@ def new_task_form(
             domains=entry["domains"],
             urgent=urgent,
         )
-        if day is not None and start is not None:
-            planning.set_task_time(task_id, start.strftime("%H:%M"))
-        st.toast("Task added" + (" · urgent" if urgent else ""))
+        planning.set_task_time(task_id, start.strftime("%H:%M"))
+        st.toast(
+            f"Task added · {day:%a %d %b} {start:%H:%M}" + (" · urgent" if urgent else "")
+        )
         st.rerun()
     return None
 
@@ -311,12 +310,12 @@ def edit_form(task_id: int) -> None:
         key=f"ed_min_{task_id}",
     )
     current_day = date.fromisoformat(t["day"]) if t["day"] else None
-    when = day_picker(f"ed_day_{task_id}", current_day, monday)
-    start = None
-    if when is not None:
-        start = start_time_question(
-            f"ed_start_{task_id}", planning.task_times().get(task_id)
-        )
+    when = day_picker(f"ed_day_{task_id}", current_day, max(monday, date.today()))
+    start = start_time_question(
+        f"ed_start_{task_id}",
+        planning.task_times().get(task_id),
+        suggested=agenda.next_free_time(when, int(minutes)),
+    )
     status_label = st.segmented_control(
         "Status",
         list(UI_STATUS),
@@ -365,11 +364,7 @@ def edit_form(task_id: int) -> None:
                     fields["milestone_kind"] = None
                     fields["milestone_id"] = None
                 planning.update_task(task_id, **fields)
-                # a task taken off its day loses its clock slot too
-                planning.set_task_time(
-                    task_id,
-                    start.strftime("%H:%M") if (when is not None and start) else None,
-                )
+                planning.set_task_time(task_id, start.strftime("%H:%M"))
                 st.toast("Task updated")
                 st.rerun()
         if st.button(
@@ -398,3 +393,8 @@ def badges(task: dict, today: date | None = None) -> None:
             st.badge(f"overdue since {d:%d %b}", icon=":material/schedule:", color="red")
     if task.get("status") == "dropped":
         st.badge("dropped", color="gray")
+    at = planning.task_times().get(int(task["id"])) if task.get("id") is not None else None
+    if at:
+        st.badge(at, icon=":material/schedule:", color="blue")
+    elif day and task.get("status") in ("todo", "doing"):
+        st.badge("no time yet", icon=":material/more_time:", color="orange")

@@ -35,7 +35,7 @@ except Exception:
     pass
 
 # Imported after init so the schema exists before anything queries it.
-from tracker import planning, scoring, ui  # noqa: E402
+from tracker import agenda, planning, scoring, ui  # noqa: E402
 
 nav = st.navigation(
     {
@@ -58,6 +58,10 @@ nav = st.navigation(
                 "app_pages/todo.py", title="To do", icon=":material/checklist_rtl:"
             ),
         ],
+        "School": [
+            st.Page("app_pages/school.py", title="School", icon=":material/school:"),
+            st.Page("app_pages/notes.py", title="Notes", icon=":material/draw:"),
+        ],
         "Review": [
             st.Page("app_pages/dashboard.py", title="Dashboard", icon=":material/speed:"),
             st.Page(
@@ -65,6 +69,11 @@ nav = st.navigation(
             ),
         ],
         "The plan": [
+            st.Page(
+                "app_pages/opportunities.py",
+                title="Opportunities",
+                icon=":material/work:",
+            ),
             st.Page(
                 "app_pages/tracks.py",
                 title="Tracks & milestones",
@@ -78,6 +87,21 @@ nav = st.navigation(
 # --- sidebar: the state of play, on every page ------------------------------
 
 with st.sidebar:
+    # What is about to be due — deadlines, planned applications, exams —
+    # is worth a badge on every page, not just the dashboard.
+    try:
+        due = agenda.due_soon(7)
+    except Exception:
+        due = []
+    if due:
+        worst = due[0]
+        st.badge(
+            f"{len(due)} due within a week · {worst['title'][:28]}"
+            + ("…" if len(worst["title"]) > 28 else ""),
+            icon=":material/alarm:",
+            color="red" if worst["days_left"] <= 1 else "orange",
+        )
+
     if not len(scoring.tracks()):
         st.caption(
             "A blank tracker. Build your first track under **Settings → "

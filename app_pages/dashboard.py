@@ -1,4 +1,4 @@
-"""How the summer is going, at a glance."""
+"""How the summer is going, at a glance — and what is about to be due."""
 
 from datetime import date, timedelta
 
@@ -6,7 +6,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from tracker import planning, scoring, structure, ui
+from tracker import agenda, planning, scoring, structure, ui
 
 h = scoring.headline()
 rep = scoring.track_report()
@@ -20,6 +20,63 @@ ui.page_header(
     f"{h['total_days']} · {h['days_left']} days left",
     ":material/speed:",
 )
+
+
+# --- what is due: pinned to the top-right corner -----------------------------
+
+REMIND_DAYS = 14
+due = agenda.due_soon(REMIND_DAYS)
+if due and not st.session_state.get("reminders_snoozed"):
+    ui.reminder_popup(due, title="Coming up")
+    # a one-off toast the first time this session sees the dashboard
+    if not st.session_state.get("reminders_toasted"):
+        st.session_state["reminders_toasted"] = True
+        nearest = due[0]
+        st.toast(
+            f"{nearest['title']} — "
+            + ("today" if nearest["days_left"] == 0 else
+               ("tomorrow" if nearest["days_left"] == 1 else
+                (f"{-nearest['days_left']} days overdue" if nearest["days_left"] < 0 else f"in {nearest['days_left']} days"))),
+            icon=":material/alarm:",
+            duration="long",
+        )
+
+with st.container(border=True):
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.markdown(f"**Coming up in the next {REMIND_DAYS} days**", width="stretch")
+        if due:
+            st.badge(f"{len(due)}", color="red" if any(d["days_left"] <= 3 for d in due) else "orange")
+            if st.button(
+                "Hide the corner reminder" if not st.session_state.get("reminders_snoozed") else "Show the corner reminder",
+                key="reminders_toggle",
+                type="tertiary",
+                icon=":material/notifications_off:" if not st.session_state.get("reminders_snoozed") else ":material/notifications_active:",
+            ):
+                st.session_state["reminders_snoozed"] = not st.session_state.get("reminders_snoozed")
+                st.rerun()
+    if not due:
+        st.caption("No application deadlines, planned applications or exams within two weeks.")
+    else:
+        for r in due:
+            with st.container(horizontal=True, vertical_alignment="center"):
+                tone = "red" if r["days_left"] <= 1 else ("orange" if r["days_left"] <= 7 else "blue")
+                st.badge(
+                    "today" if r["days_left"] == 0 else ("tomorrow" if r["days_left"] == 1 else
+                    (f"{-r['days_left']} d overdue" if r["days_left"] < 0 else f"{r['days_left']} d")),
+                    icon=":material/alarm:",
+                    color=tone,
+                )
+                ui.chip(agenda.KINDS[r["kind"]]["label"], r["color"])
+                st.markdown(
+                    f"**{r['title']}**  \n:small[{r['subtitle']} · {r['when']:%a %d %b}"
+                    + (f" {r['time']}" if r["time"] else "")
+                    + (f" · requirements {r['reqs']}" if r.get("reqs") else "")
+                    + "]",
+                    width="stretch",
+                )
+                if st.button("Open", key=f"due_open_{r['kind']}_{r['id']}", icon=":material/open_in_new:", type="tertiary"):
+                    agenda.go(r["kind"], r["id"], source="dashboard")
+
 ui.require_tracks()
 
 

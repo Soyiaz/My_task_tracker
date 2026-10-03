@@ -10,7 +10,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from tracker import db, entryform, planning, scoring, structure, taskedit, ui
+from tracker import agenda, db, entryform, planning, scoring, structure, taskedit, ui
 
 TODAY = date.today()
 MONDAY = scoring.week_start(TODAY)
@@ -191,6 +191,27 @@ if day["planned_minutes"]:
     )
 
 
+# --- also today: deadlines, exams, lectures, study sessions -----------------
+
+other = agenda.events_on(TODAY)
+other = other[other["kind"] != "task"] if len(other) else other
+if len(other):
+    with st.container(border=True):
+        st.markdown("**Also today**")
+        for r in other.to_dict("records"):
+            meta = agenda.KINDS[r["kind"]]
+            with st.container(horizontal=True, vertical_alignment="center"):
+                st.markdown(f"**{r['time'] or '—'}**", width=70)
+                ui.chip(meta["label"], r["color"])
+                st.markdown(
+                    f"**{r['title']}**  \n:small[{r['subtitle']}]", width="stretch"
+                )
+                if st.button(
+                    "Open", key=f"today_open_{r['key']}", icon=":material/open_in_new:", type="tertiary"
+                ):
+                    agenda.go(r["kind"], r["id"], source="today")
+
+
 # --- today's plan -----------------------------------------------------------
 
 st.markdown("### Today's plan")
@@ -206,6 +227,10 @@ if not len(tasks_today):
         if st.button("Go and plan the week", icon=":material/date_range:"):
             st.switch_page("app_pages/week.py")
 else:
+    times = planning.task_times()
+    tasks_today = tasks_today.copy()
+    tasks_today["_at"] = [times.get(int(i)) or "zz" for i in tasks_today["id"]]
+    tasks_today = tasks_today.sort_values(["_at", "sort"])
     for t in tasks_today.to_dict("records"):
         dropped = t["status"] == "dropped"
         with st.container(border=True):
@@ -343,7 +368,12 @@ else:
                     key=f"td_push_{t['id']}",
                     type="tertiary",
                 ):
-                    planning.schedule_task(int(t["id"]), TODAY + timedelta(days=1))
+                    tomorrow = TODAY + timedelta(days=1)
+                    planning.schedule_task(int(t["id"]), tomorrow)
+                    planning.set_task_time(
+                        int(t["id"]),
+                        agenda.next_free_time(tomorrow, int(t["planned_minutes"])).strftime("%H:%M"),
+                    )
                     st.rerun()
 
 
@@ -373,6 +403,10 @@ with st.container(border=True):
             ):
                 for label in picked:
                     planning.schedule_task(labels[label], TODAY)
+                    mins = int(spare[spare["id"] == labels[label]].iloc[0]["planned_minutes"])
+                    planning.set_task_time(
+                        labels[label], agenda.next_free_time(TODAY, mins).strftime("%H:%M")
+                    )
                 st.rerun()
         else:
             st.caption("Nothing unscheduled left this week.")

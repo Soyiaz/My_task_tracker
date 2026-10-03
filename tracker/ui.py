@@ -6,6 +6,9 @@ has to stay consistent for the app to feel like one thing.
 
 from __future__ import annotations
 
+import html as _html
+from datetime import date
+
 import altair as alt
 import streamlit as st
 
@@ -86,8 +89,20 @@ def chip(label: str, color: str) -> None:
         f'<span style="display:inline-flex;align-items:center;gap:.4rem;'
         f'font-size:.82rem;font-weight:500;opacity:.9">'
         f'<span style="width:.55rem;height:.55rem;border-radius:50%;'
-        f'background:{color};flex:none"></span>{label}</span>'
+        f'background:{color};flex:none"></span>{_html.escape(str(label))}</span>'
     )
+
+
+def chips(pairs: list[tuple[str, str]]) -> None:
+    """Several coloured dots on one line — a legend without a chart."""
+    spans = "".join(
+        f'<span style="display:inline-flex;align-items:center;gap:.35rem;'
+        f'margin-right:.9rem;font-size:.78rem;opacity:.85">'
+        f'<span style="width:.6rem;height:.6rem;border-radius:3px;'
+        f'background:{color};flex:none"></span>{_html.escape(str(label))}</span>'
+        for label, color in pairs
+    )
+    st.html(f'<div style="line-height:1.9">{spans}</div>')
 
 
 def status_badge(status: str) -> None:
@@ -157,3 +172,90 @@ def planned_vs_actual_chart(df, x: str, planned: str, actual: str, height: int =
         tooltip=[x, alt.Tooltip(f"{actual}:Q", title="Actual", format=".1f")],
     )
     return (promise + got).properties(height=height)
+
+
+# --- reminders, pinned to the top right --------------------------------------
+
+
+def _when_text(days_left: int, when: date, at: str | None) -> str:
+    if days_left < 0:
+        word = f"{-days_left} day{'s' if days_left != -1 else ''} ago"
+    elif days_left == 0:
+        word = "today"
+    elif days_left == 1:
+        word = "tomorrow"
+    else:
+        word = f"in {days_left} days"
+    stamp = f"{when:%a %d %b}" + (f" · {at}" if at else "")
+    return f"{word} · {stamp}"
+
+
+def reminder_popup(items: list[dict], title: str = "Coming up", dismiss_key: str = "reminder_popup") -> None:
+    """A card fixed to the top-right corner of the screen, listing what is
+    due. Pure HTML and CSS: the close button is a checkbox trick, so it
+    works without any script and survives reruns the way the rest of the
+    page does. Dismissing it for the session is a Streamlit button on the
+    page itself, so both ways out exist."""
+    if not items:
+        return
+    rows = []
+    for r in items[:6]:
+        tone = "#e11d48" if r["days_left"] <= 1 else ("#ea580c" if r["days_left"] <= 7 else "#4f46e5")
+        rows.append(
+            '<div style="display:flex;gap:.55rem;align-items:flex-start;padding:.45rem 0;'
+            'border-top:1px solid rgba(128,128,128,.18)">'
+            f'<span style="width:.6rem;height:.6rem;border-radius:50%;background:{r["color"]};'
+            'flex:none;margin-top:.35rem"></span>'
+            '<div style="min-width:0;flex:1">'
+            f'<div style="font-weight:600;font-size:.86rem;line-height:1.25;overflow:hidden;'
+            f'text-overflow:ellipsis;white-space:nowrap">{_html.escape(r["title"])}</div>'
+            f'<div style="font-size:.74rem;opacity:.75">{_html.escape(r["subtitle"])}'
+            + (f' · requirements {r["reqs"]}' if r.get("reqs") else "")
+            + "</div>"
+            f'<div style="font-size:.76rem;color:{tone};font-weight:600">'
+            f'{_html.escape(_when_text(r["days_left"], r["when"], r.get("time")))}</div>'
+            "</div></div>"
+        )
+    more = len(items) - 6
+    extra = (
+        f'<div style="font-size:.74rem;opacity:.7;padding-top:.4rem">and {more} more below</div>'
+        if more > 0
+        else ""
+    )
+    st.html(
+        f"""
+<style>
+#{dismiss_key}-box {{
+  position: fixed; top: 3.9rem; right: 1rem; z-index: 999990; width: 21rem; max-width: calc(100vw - 2rem);
+  background: var(--secondary-background-color, #f6f7fb); color: inherit;
+  border: 1px solid rgba(128,128,128,.25); border-radius: 12px; padding: .7rem .85rem .6rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18); font-size: .9rem; backdrop-filter: blur(6px);
+}}
+#{dismiss_key}-toggle {{ display: none; }}
+#{dismiss_key}-toggle:checked ~ #{dismiss_key}-box {{ display: none; }}
+#{dismiss_key}-box label {{ cursor: pointer; opacity: .6; font-size: 1.1rem; line-height: 1; padding: 0 .2rem; }}
+#{dismiss_key}-box label:hover {{ opacity: 1; }}
+@media (max-width: 640px) {{ #{dismiss_key}-box {{ top: auto; bottom: 1rem; right: .6rem; }} }}
+</style>
+<input type="checkbox" id="{dismiss_key}-toggle">
+<div id="{dismiss_key}-box">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+    <div style="font-weight:700;font-size:.9rem">⏰ {_html.escape(title)} <span style="opacity:.6;font-weight:500">({len(items)})</span></div>
+    <label for="{dismiss_key}-toggle" title="Hide">✕</label>
+  </div>
+  {''.join(rows)}
+  {extra}
+</div>
+"""
+    )
+
+
+def event_line(ev: dict, show_day: bool = False) -> str:
+    """One calendar event as a short markdown line."""
+    when = (ev["time"] or "all day")
+    if show_day:
+        when = f"{ev['day']:%a %d %b} · {when}"
+    done = "~~" if ev.get("done") else ""
+    return f"{done}**{ev['title']}**{done}  \n:small[{when}" + (
+        f" · {ev['subtitle']}" if ev.get("subtitle") else ""
+    ) + "]"

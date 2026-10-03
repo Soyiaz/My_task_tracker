@@ -176,15 +176,93 @@ by domains should admit what it could not classify.
 
 | Page | What it is for |
 | --- | --- |
-| **Today** | The day's plan, the stopwatch, per-task logging, and today's entries. |
+| **Today** | The day's plan, the stopwatch, per-task logging, today's entries — and *Also today*: the deadlines, exams, lectures and study sessions that fall on the day. |
 | **The week** | Budget → the work → review. The planning page. |
-| **Calendar** | The day on a clock. Give each scheduled task a start time and see the day (and the whole week) as timed blocks. |
+| **Calendar** | Everything with a date in one place — tasks, application deadlines, planned application days, exams, lectures, study sessions — as a month grid, a week on a clock, a day in detail, or a list. Tap any item and it opens the page where it was saved, with that item at the top. |
 | **Journal** | A six-question morning check-in, answered like a chat, with an archive of every day. Lives in its own Neon Postgres database (see below). |
 | **To do** | Every task from every week in one list. Add new ones, mark not started / in progress / done, flag what is urgent, and filter by track, status, scope or name. |
-| **Dashboard** | Goal completion, on-pace score, which track needs the next block of work, whether the planning habit is holding, and the charts behind all of it. |
+| **School** | Courses with their units and lecture timetable; a weekly log of how many chapters the lecture covered against how many you studied and for how long; exams, tests and finals with a date and time; and a study plan per exam that lays dated, timed sessions on the calendar. |
+| **Notes** | A Notability-style notebook per course: pen, highlighter, eraser, lasso, text and shapes on lined, grid, dotted, plain or Cornell paper, with pages, thumbnails and PNG export. Autosaves. |
+| **Dashboard** | Goal completion, on-pace score, which track needs the next block of work, whether the planning habit is holding, the charts behind all of it — and a reminder pinned to the top-right corner for every deadline, planned application and exam within two weeks. |
 | **Reports** | Week, month, whole plan — hours registered against target and against the budget you set, with what got finished. |
+| **Opportunities** | Scholarships, internships, programmes and the like: category, organisation, link, the deadline (date and time), when applications open, the day you plan to apply, and a tickable list of what each one requires. |
 | **Tracks & milestones** | The plan itself. Every skill, tool, project, book and opportunity, editable in place. |
 | **Settings** | Dates, weekly hour target, the standing time split, the structure editors, domains and colours. |
+
+## Opportunities, deadlines and reminders
+
+An opportunity is anything you apply for. Each one carries a **category**
+(scholarship, internship, job, fellowship, competition, grant, conference,
+programme, research, volunteering, other), the **deadline** with a closing
+time, optionally the day **applications open** and the day **you plan to
+apply**, and a list of **requirements** — transcript, letters, essay —
+ticked off one by one with a progress bar.
+
+The deadline and the planned application day are drawn on the Calendar.
+On the Dashboard, anything closing, opening or being sat within fourteen
+days is pinned in a card at the **top-right corner** of the screen (close it
+with the ✕, or hide it for the session with the button under it), listed in
+full below the headline numbers, and announced once per session as a
+toast. The sidebar carries a badge on every page when something is due
+within a week.
+
+## School
+
+**Courses** have a name, code, units, instructor, colour, term dates, the
+number of chapters or topics in the syllabus, and a weekly **lecture
+timetable** (day, start, end, room) that the Calendar draws week after week.
+
+**This week** is the weekly log: for each course, how many chapters the
+lecture covered, how many you studied, and how many hours it took. The
+course card shows the lecture's progress and yours through the syllabus,
+and the *backlog* — chapters the lecture has covered that you have not. The
+page suggests two hours of study per unit per week, the usual rule of
+thumb, and compares the week against it.
+
+**Exams & study plan** holds quizzes, tests, midterms, finals, assignments
+and projects, each with a date, time, length, location, weight and topics.
+Each exam has a *start studying on* date (suggested from its kind: three
+days before a quiz, three weeks before a final) and a **Plan the study**
+button that lays study sessions on the calendar from that day to the day
+before the exam, on the weekdays you tick, at the time and length you
+choose, dealing your list of topics out across them. Sessions are ticked off
+as they happen; a missed one is flagged. Sessions can also be added loose,
+not tied to any exam.
+
+**Progress** charts, per course, where the lecture is against where you are
+week by week (the gap between the lines is the backlog), and the hours
+studied per week across courses.
+
+### Notes
+
+The Notes page is the study notebook, modelled on Notability. Tools across
+the top: **pen** (pressure-sensitive with a stylus), **highlighter**,
+**eraser** (removes whole strokes), **lasso** (select, move, duplicate,
+delete), **text**, **shapes** (line, arrow, rectangle, ellipse) and a
+**hand** for scrolling. A second row holds the colour swatches, three
+stroke widths, the paper (lined, grid, dotted, plain, Cornell) and paper
+colour (white, cream, dark). Pages stack vertically with thumbnails down
+the left; add, delete, zoom, fit, export a page as PNG. Undo and redo are
+per page. Keyboard shortcuts are listed under the notebook.
+
+On a tablet the stylus writes and a finger scrolls; tick *Finger draws* to
+write with a finger. The notebook autosaves a moment after the pen lifts
+("Saved" top-right), and on leaving the page.
+
+Each notebook belongs to a course (or to none). The ink is vector data,
+kept as one JSON file per notebook under `files/` — parked in the cloud
+bucket like any upload — while the list of notebooks lives with the rest
+of the settings.
+
+## Every plan has a date and a time
+
+A task is always on a day and at a time of day. The forms that create one
+(Today, The week, To do) ask for both and start from today and the next
+free slot on that day's calendar; the editor does the same. Tasks made
+before this rule, or that lost their day, are listed at the bottom of the
+Calendar under *Plans without a date or a time* with a one-click fix that
+gives each its own week's first open day (or today, for a week that has
+gone) and the next free quarter-hour after everything already timed.
 
 ## How the numbers work
 
@@ -212,10 +290,10 @@ half-done ones first.
 
 **Editing a task** works the same on Today, The week and To do: an **Edit**
 popover on every row that can change the name, move it anywhere in the tree,
-retag its domains, change the estimate, the day, the status and the urgency,
-unlink it from its milestone, or delete it. The **Flag** button sits beside
-it on all three pages, and every place that *creates* a task offers the
-urgent toggle up front.
+retag its domains, change the estimate, the day, the time, the status and the
+urgency, unlink it from its milestone, or delete it. The **Flag** button sits
+beside it on all three pages, and every place that *creates* a task offers
+the urgent toggle up front.
 
 **The day is a free date, and the week follows it.** Nothing pens you into
 the seven days of the week a task currently sits in — pick any date and the
@@ -257,12 +335,23 @@ unplanned, nothing more. The week page is where the real allocation happens.
 **Domain coverage** is each lens's share of all logged hours, against the
 target share in Settings. The dashboard names whichever lens is thinnest.
 
+## Where the new things are stored
+
+The SQLite schema has not changed. Opportunities, courses, the weekly
+school log, exams, study sessions and the list of notebooks are each one
+JSON value in the existing `settings` table (keys `opportunity_deadlines`,
+`school_courses`, `school_weeks`, `school_exams`, `school_sessions`,
+`notebooks`), read and written through `tracker/store.py` — the same
+pattern task times already used. Notebook ink is one JSON file per
+notebook under `files/`. A database made before this update works
+unchanged, locally or in a cloud bucket.
+
 ## Layout
 
 ```
 streamlit_app.py     navigation + the sidebar status panel
 .streamlit/          theme (light and dark)
-files/               uploaded artefacts (yours — not in the repo)
+files/               uploaded artefacts and notebook ink (yours — not in the repo)
 tracker.db           your data (yours — not in the repo)
 tracker/
   taxonomy.py        what a fresh database starts with
@@ -271,14 +360,24 @@ tracker/
   structure.py       reading and editing the tree, requirement checks, files
   scoring.py         track health, domain coverage, week and month reports
   planning.py        week budgets, tasks, plan-vs-actual adherence
+  store.py           JSON collections in the settings table (no schema change)
+  opps.py            opportunities: deadlines, apply dates, requirements
+  school.py          courses, weekly log, exams, study sessions and plans
+  notes.py           notebooks: the index, and the ink files under files/
+  notecanvas.py      the Notability-style editor (a Streamlit v2 component)
+  agenda.py          every dated thing as one feed; reminders; calendar jumps
   entryform.py       the track → category → subcategory → detail picker
   taskedit.py        the flag, the edit popover and the row badges
-  ui.py              colours, chips, formatting shared across pages
+  ui.py              colours, chips, the corner reminder, formatting
 app_pages/
   today.py           the day's plan, stopwatch, structured logging
   week.py            budget / the work / review
+  calendar.py        month, week, day and list views of everything dated
   todo.py            every task, everywhere, urgent first
-  dashboard.py       headline numbers, domain coverage, advice, charts
+  school.py          courses, this week, exams & study plan, progress
+  notes.py           the notebook page
+  opportunities.py   deadlines and requirements
+  dashboard.py       headline numbers, reminders, domain coverage, advice, charts
   reports.py         week / month / whole plan
   tracks.py          the tree and the milestones, editable
   settings.py        window, target, shares, structure, domains, colours

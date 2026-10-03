@@ -3,7 +3,7 @@
 The week page is where work gets planned and the day page is where it gets
 done; this is where you see all of it at once when you have lost the thread.
 Urgent and still open floats to the top — that is the only thing the flag
-does, and it is enough.
+does, and it is enough. A task tapped on the Calendar lands here, first.
 """
 
 from datetime import date, timedelta
@@ -11,7 +11,7 @@ from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 
-from tracker import planning, scoring, structure, taskedit, ui
+from tracker import agenda, planning, scoring, structure, taskedit, ui
 
 TODAY = date.today()
 MONDAY = scoring.week_start(TODAY)
@@ -28,11 +28,12 @@ STATUS_UI = {"todo": "Not started", "doing": "In progress", "done": "Done"}
 UI_STATUS = {v: k for k, v in STATUS_UI.items()}
 
 board = planning.board()
+jump = agenda.take_jump("task")
 
 with st.expander("Add a task", icon=":material/add_task:"):
     st.caption(
-        "Same fields as anywhere else — it lands in the week of whichever day "
-        "you pick, or waits unscheduled in this week's list."
+        "Same fields as anywhere else — it lands on the day you pick, at the "
+        "next free time on that day's calendar."
     )
     taskedit.new_task_form("todo_new", MONDAY, default_day=TODAY)
 
@@ -83,68 +84,13 @@ with st.container(horizontal=True):
     )
 
 
-# --- filters ----------------------------------------------------------------
-
-with st.container(border=True):
-    tracks = scoring.tracks()
-    with st.container(horizontal=True):
-        track_filter = st.pills(
-            "Tracks",
-            list(tracks["name"]),
-            selection_mode="multi",
-            key="todo_tracks",
-        )
-        status_filter = st.pills(
-            "Status",
-            list(UI_STATUS),
-            selection_mode="multi",
-            default=["Not started", "In progress"],
-            key="todo_status",
-        )
-    with st.container(horizontal=True):
-        search = st.text_input(
-            "Search",
-            placeholder="Filter by name…",
-            key="todo_search",
-            label_visibility="collapsed",
-        )
-        scope = st.segmented_control(
-            "Scope",
-            ["Everything", "This week", "Today", "Unscheduled"],
-            default="Everything",
-            key="todo_scope",
-            label_visibility="collapsed",
-        )
-        show_dropped = st.checkbox("Show dropped", key="todo_dropped")
-
-view = board.copy()
-if track_filter:
-    view = view[view["track"].isin(track_filter)]
-if status_filter:
-    keep = {UI_STATUS[s] for s in status_filter}
-    if show_dropped:
-        keep.add("dropped")
-    view = view[view["status"].isin(keep)]
-elif not show_dropped:
-    view = view[view["status"] != "dropped"]
-if search.strip():
-    needle = search.strip().lower()
-    view = view[view["title"].str.lower().str.contains(needle, regex=False)]
-if scope == "This week":
-    view = view[view["week_start"] == MONDAY.isoformat()]
-elif scope == "Today":
-    view = view[view["day"] == TODAY.isoformat()]
-elif scope == "Unscheduled":
-    view = view[view["day"].isna()]
-
-st.caption(f"{len(view)} of {len(board)} tasks")
-
-
 # --- one row ----------------------------------------------------------------
 
 
-def row(t: dict, show_track: bool = True) -> None:
+def row(t: dict, show_track: bool = True, highlight: bool = False) -> None:
     with st.container(border=True):
+        if highlight:
+            st.caption(":material/arrow_back: From the calendar — this is the one you tapped.")
         with st.container(horizontal=True, vertical_alignment="center"):
             taskedit.urgent_button(t, "todo")
 
@@ -189,7 +135,12 @@ def row(t: dict, show_track: bool = True) -> None:
             elif t["day_date"]:
                 st.badge(f"{t['day_date']:%a %d %b}", icon=":material/event:")
             else:
-                st.badge("unscheduled", icon=":material/event_busy:", color="gray")
+                st.badge("no day yet", icon=":material/event_busy:", color="orange")
+            at = times.get(int(t["id"]))
+            if at:
+                st.badge(at, icon=":material/schedule:", color="blue")
+            elif t["is_open"]:
+                st.badge("no time yet", icon=":material/more_time:", color="orange")
             if t["week_start"] != MONDAY.isoformat():
                 st.badge(t["week"], color="gray")
             if t["milestone_kind"] and pd.notna(t["milestone_id"]):
@@ -211,6 +162,10 @@ def row(t: dict, show_track: bool = True) -> None:
                     type="tertiary",
                 ):
                     planning.schedule_task(int(t["id"]), TODAY)
+                    planning.set_task_time(
+                        int(t["id"]),
+                        agenda.next_free_time(TODAY, int(t["planned_minutes"])).strftime("%H:%M"),
+                    )
                     st.rerun()
             if t["is_open"]:
                 if st.button(
@@ -219,15 +174,12 @@ def row(t: dict, show_track: bool = True) -> None:
                     key=f"todo_tmrw_{t['id']}",
                     type="tertiary",
                 ):
-                    planning.schedule_task(int(t["id"]), TODAY + timedelta(days=1))
-                    st.rerun()
-                if st.button(
-                    "Unschedule",
-                    icon=":material/event_busy:",
-                    key=f"todo_unsched_{t['id']}",
-                    type="tertiary",
-                ):
-                    planning.schedule_task(int(t["id"]), None)
+                    tomorrow = TODAY + timedelta(days=1)
+                    planning.schedule_task(int(t["id"]), tomorrow)
+                    planning.set_task_time(
+                        int(t["id"]),
+                        agenda.next_free_time(tomorrow, int(t["planned_minutes"])).strftime("%H:%M"),
+                    )
                     st.rerun()
                 if st.button(
                     "Drop",
@@ -246,6 +198,78 @@ def row(t: dict, show_track: bool = True) -> None:
             ):
                 planning.delete_task(int(t["id"]))
                 st.rerun()
+
+
+times = planning.task_times()
+
+# --- from the calendar: the one that was tapped, first ------------------------
+
+if jump is not None:
+    hit = board[board["id"] == int(jump["id"])]
+    if len(hit):
+        row(hit.iloc[0].to_dict(), highlight=True)
+        st.divider()
+    else:
+        st.info("That task is gone.", icon=":material/search_off:")
+
+
+# --- filters ----------------------------------------------------------------
+
+with st.container(border=True):
+    tracks = scoring.tracks()
+    with st.container(horizontal=True):
+        track_filter = st.pills(
+            "Tracks",
+            list(tracks["name"]),
+            selection_mode="multi",
+            key="todo_tracks",
+        )
+        status_filter = st.pills(
+            "Status",
+            list(UI_STATUS),
+            selection_mode="multi",
+            default=["Not started", "In progress"],
+            key="todo_status",
+        )
+    with st.container(horizontal=True):
+        search = st.text_input(
+            "Search",
+            placeholder="Filter by name…",
+            key="todo_search",
+            label_visibility="collapsed",
+        )
+        scope = st.segmented_control(
+            "Scope",
+            ["Everything", "This week", "Today", "No day or time"],
+            default="Everything",
+            key="todo_scope",
+            label_visibility="collapsed",
+        )
+        show_dropped = st.checkbox("Show dropped", key="todo_dropped")
+
+view = board.copy()
+if track_filter:
+    view = view[view["track"].isin(track_filter)]
+if status_filter:
+    keep = {UI_STATUS[s] for s in status_filter}
+    if show_dropped:
+        keep.add("dropped")
+    view = view[view["status"].isin(keep)]
+elif not show_dropped:
+    view = view[view["status"] != "dropped"]
+if search.strip():
+    needle = search.strip().lower()
+    view = view[view["title"].str.lower().str.contains(needle, regex=False)]
+if scope == "This week":
+    view = view[view["week_start"] == MONDAY.isoformat()]
+elif scope == "Today":
+    view = view[view["day"] == TODAY.isoformat()]
+elif scope == "No day or time":
+    view = view[view["day"].isna() | ~view["id"].map(lambda i: int(i) in times)]
+if jump is not None:
+    view = view[view["id"] != int(jump["id"])]
+
+st.caption(f"{len(view)} of {len(board)} tasks")
 
 
 # --- the list ---------------------------------------------------------------
