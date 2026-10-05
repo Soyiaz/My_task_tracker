@@ -64,20 +64,38 @@ today_tab, archive_tab = st.tabs(
 )
 
 
-def show_entry(entry: dict, key_prefix: str, deletable: bool = False) -> None:
-    """One journaled day, rendered the same everywhere — editable in place."""
+def show_entry(
+    entry: dict, key_prefix: str, deletable: bool = False, fold: bool = False
+) -> None:
+    """One journaled day, rendered the same everywhere — editable in place.
+
+    ``fold`` turns it into one closed row of a list: the date, with an arrow
+    at the edge that opens what was written that day.
+    """
     d = entry["day"]
     d = d if isinstance(d, date) else date.fromisoformat(str(d))
-    with st.container(border=True):
+    ago = (TODAY - d).days
+    when = "today" if ago == 0 else ("yesterday" if ago == 1 else f"{ago} days ago")
+    if fold:
+        answered = sum(1 for k in journal.KEYS if str(entry.get(k, "") or "").strip())
+        box = st.expander(
+            f"**{d:%A %d %B %Y}** · {when} · {answered} of {len(journal.KEYS)} answered",
+            icon=":material/event_note:",
+        )
+    else:
+        box = st.container(border=True)
+    with box:
         head = st.container(horizontal=True, vertical_alignment="center")
         with head:
-            st.markdown(f"**{d:%A %d %B %Y}**", width="stretch")
-            ago = (TODAY - d).days
-            st.badge(
-                "today" if ago == 0 else ("yesterday" if ago == 1 else f"{ago} days ago"),
-                icon=":material/event:",
-                color="green" if ago == 0 else "gray",
-            )
+            if fold:
+                st.caption("What you wrote that day", width="stretch")
+            else:
+                st.markdown(f"**{d:%A %d %B %Y}**", width="stretch")
+                st.badge(
+                    when,
+                    icon=":material/event:",
+                    color="green" if ago == 0 else "gray",
+                )
             with st.popover(":material/edit:", help="Edit this entry"):
                 edited = {}
                 for k, _, label, icon in journal.QUESTIONS:
@@ -229,11 +247,11 @@ with archive_tab:
         st.altair_chart(heat, width="content")
 
         st.divider()
-        recent = df.head(10)
-        for row in recent.to_dict("records"):
-            show_entry(row, "arch", deletable=True)
-        rest = df.iloc[10:]
-        if len(rest):
-            with st.expander(f"Older entries ({len(rest)})", icon=":material/inventory_2:"):
-                for row in rest.to_dict("records"):
-                    show_entry(row, "old", deletable=True)
+        st.caption("Every day you journaled, newest first. Open a day with the arrow at its edge.")
+        # one row per day, under a heading for its month
+        month = None
+        for row in df.sort_values("day", ascending=False).to_dict("records"):
+            if (row["day"].year, row["day"].month) != month:
+                month = (row["day"].year, row["day"].month)
+                st.markdown(f"**{row['day']:%B %Y}**")
+            show_entry(row, "arch", deletable=True, fold=True)
