@@ -85,14 +85,8 @@ def uid() -> str | None:
     """
     if not cloud.enabled():
         return "local"
-    try:
-        import streamlit as st
-
-        if getattr(st.user, "is_logged_in", False):
-            return cloud._uid_for(st.user.email)
-    except Exception:
-        pass
-    return None
+    email = cloud.current_email()
+    return cloud._uid_for(email) if email else None
 
 
 # --- talking to Neon ---------------------------------------------------------

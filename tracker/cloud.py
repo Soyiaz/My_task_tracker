@@ -1,4 +1,5 @@
-"""Optional cloud mode: sign in with Google, keep your own database.
+"""Optional cloud mode: sign in (Google, or email and password), keep your
+own database.
 
 A deployed container has a disposable disk, so "everyone shares one database
 that evaporates" is all a plain deployment can offer. This module fixes both
@@ -6,6 +7,10 @@ halves when — and only when — the host provides two secrets sections:
 
     [auth]        Streamlit's native OIDC login (Google)
     [supabase]    url, key (service_role), bucket — free-tier object storage
+
+Email-and-password accounts need nothing more: the salted hash of the
+password is one small file, ``<uid>/auth.json``, in the same bucket folder
+as that account's database. No table anywhere is created or changed.
 
 With them, every account gets its own SQLite file, pulled from the bucket at
 login and parked back whenever it changes. The rest of the app is untouched:
@@ -22,7 +27,11 @@ made inside a fragment rerun is parked on the next full rerun.
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
+import secrets as pysecrets
 import tempfile
+import time
 from pathlib import Path
 
 # Session keys — db.py reads the two path overrides by these exact names.
@@ -31,6 +40,12 @@ K_FILES = "_user_files_dir"
 K_UID = "_cloud_uid"
 K_DIRTY = "_cloud_dirty"
 K_DEMO = "_cloud_demo"
+K_PW_EMAIL = "_cloud_pw_email"  # set once an email + password login succeeds
+
+PW_MIN = 8
+PW_ITERATIONS = 300_000
+PW_MAX_FAILS = 8  # wrong passwords in a row before the account locks
+PW_LOCK_SECONDS = 15 * 60
 
 _BARE: dict = {}  # stands in for session state in tests and bare scripts
 
@@ -126,6 +141,26 @@ def _put(path: str, data: bytes) -> None:
     r.raise_for_status()
 
 
+def _get_strict(path: str) -> bytes | None:
+    """Like ``_get``, but only "there is no such object" comes back as None.
+    Anything else that is not a 200 raises — login decisions must never
+    mistake an outage for "this account does not exist"."""
+    import requests
+
+    url, key, bucket = _store()
+    r = requests.get(
+        f"{url}/storage/v1/object/{bucket}/{path}", headers=_headers(key), timeout=30
+    )
+    if r.status_code == 200:
+        return r.content
+    text = r.text.lower()
+    if r.status_code == 404 or (
+        r.status_code == 400 and ("not_found" in text or "not found" in text)
+    ):
+        return None
+    raise RuntimeError(f"storage answered {r.status_code}")
+
+
 def _delete(path: str) -> None:
     import requests
 
@@ -133,6 +168,135 @@ def _delete(path: str) -> None:
     requests.delete(
         f"{url}/storage/v1/object/{bucket}/{path}", headers=_headers(key), timeout=30
     )
+
+
+# --- passwords ---------------------------------------------------------------
+# One JSON file per account, next to its database: a random salt and the
+# PBKDF2 hash of the password. The password itself is never stored or logged.
+
+
+def _pw_hash(password: str, salt: str, iterations: int) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256", password.encode(), bytes.fromhex(salt), int(iterations)
+    ).hex()
+
+
+def _read_auth(uid: str) -> dict | None:
+    raw = _get_strict(f"{uid}/auth.json")
+    if raw is None:
+        return None
+    try:
+        rec = json.loads(raw)
+    except ValueError:
+        raise RuntimeError("the stored password record is unreadable")
+    return rec if isinstance(rec, dict) and rec.get("hash") else None
+
+
+def _write_auth(uid: str, rec: dict) -> None:
+    _put(f"{uid}/auth.json", json.dumps(rec).encode())
+
+
+def valid_email(email: str) -> bool:
+    e = email.strip()
+    return "@" in e and " " not in e and "." in e.split("@")[-1] and len(e) >= 6
+
+
+def has_password(email: str) -> bool:
+    return _read_auth(_uid_for(email)) is not None
+
+
+def set_password(email: str, password: str) -> None:
+    """Create or replace the password of an account. Callers decide whether
+    that is allowed; this only writes the record."""
+    salt = pysecrets.token_hex(16)
+    _write_auth(
+        _uid_for(email),
+        {
+            "v": 1,
+            "salt": salt,
+            "iterations": PW_ITERATIONS,
+            "hash": _pw_hash(password, salt, PW_ITERATIONS),
+            "fails": 0,
+            "locked_until": 0,
+            "set_at": int(time.time()),
+        },
+    )
+
+
+def register(email: str, password: str) -> tuple[bool, str]:
+    """Sign up with an email and a password.
+
+    An email that already owns a tracker made through Google sign-in cannot
+    be claimed here — otherwise anyone could type someone else's address,
+    pick a password, and walk into their data. That owner signs in with
+    Google and sets a password from the sidebar instead.
+    """
+    email = email.strip().lower()
+    if not valid_email(email):
+        return False, "That does not look like an email address."
+    if len(password) < PW_MIN:
+        return False, f"Use at least {PW_MIN} characters for the password."
+    uid = _uid_for(email)
+    if _read_auth(uid) is not None:
+        return False, "That email already has an account. Log in instead."
+    if _get_strict(f"{uid}/tracker.db") is not None:
+        return False, (
+            "That email already has a tracker made with Google sign-in. Sign in "
+            "with Google, then set a password from the sidebar."
+        )
+    set_password(email, password)
+    return True, ""
+
+
+def check_password(email: str, password: str) -> tuple[bool, str]:
+    email = email.strip().lower()
+    uid = _uid_for(email)
+    rec = _read_auth(uid) if valid_email(email) else None
+    if rec is None:
+        _pw_hash(password, "00" * 16, PW_ITERATIONS)  # same work either way
+        return False, "Wrong email or password."
+    now = int(time.time())
+    if int(rec.get("locked_until", 0)) > now:
+        mins = (int(rec["locked_until"]) - now) // 60 + 1
+        return False, f"Too many wrong passwords. Try again in {mins} minute(s)."
+    good = hmac.compare_digest(
+        _pw_hash(password, rec["salt"], rec.get("iterations", PW_ITERATIONS)), rec["hash"]
+    )
+    if good:
+        if rec.get("fails"):
+            rec["fails"] = 0
+            rec["locked_until"] = 0
+            _write_auth(uid, rec)
+        return True, ""
+    rec["fails"] = int(rec.get("fails", 0)) + 1
+    if rec["fails"] >= PW_MAX_FAILS:
+        rec["fails"] = 0
+        rec["locked_until"] = now + PW_LOCK_SECONDS
+    _write_auth(uid, rec)
+    return False, "Wrong email or password."
+
+
+def current_email() -> str | None:
+    """Who is signed in, by either route. None when nobody is."""
+    try:
+        import streamlit as st
+
+        if getattr(st.user, "is_logged_in", False):
+            return st.user.email
+    except Exception:
+        pass
+    return _state().get(K_PW_EMAIL)
+
+
+def signed_in_with_password() -> bool:
+    try:
+        import streamlit as st
+
+        if getattr(st.user, "is_logged_in", False):
+            return False
+    except Exception:
+        pass
+    return bool(_state().get(K_PW_EMAIL))
 
 
 # --- the session -------------------------------------------------------------
@@ -150,11 +314,12 @@ def activate() -> None:
     if state.get(K_DEMO):
         return  # the shared, resettable container database — on purpose
 
-    if not st.user.is_logged_in:
+    email = current_email()
+    if not email:
         _landing()
         st.stop()
 
-    uid = _uid_for(st.user.email)
+    uid = _uid_for(email)
     work = _workdir(uid)
     dbfile = work / "tracker.db"
     filesdir = work / "files"
@@ -188,13 +353,60 @@ def _landing() -> None:
     st.title(":material/target: Plan tracker")
     st.markdown(
         "Plan the week, work the day, log the hours — and keep your own "
-        "tracker, tied to your Google account. Only you see your data."
+        "tracker, tied to your account. Only you see your data."
     )
+
+    login_tab, signup_tab = st.tabs(["Log in", "Sign up"])
+    with login_tab:
+        with st.form("pw_login"):
+            email = st.text_input("Email", key="pw_login_email")
+            password = st.text_input("Password", type="password", key="pw_login_pw")
+            go = st.form_submit_button(
+                "Log in", type="primary", icon=":material/login:", use_container_width=True
+            )
+        if go:
+            try:
+                ok, msg = check_password(email, password)
+            except Exception:
+                ok, msg = False, "Storage is unreachable right now. Try again in a minute."
+            if ok:
+                _state()[K_PW_EMAIL] = email.strip().lower()
+                st.rerun()
+            st.error(msg)
+    with signup_tab:
+        with st.form("pw_signup"):
+            email = st.text_input("Email", key="pw_signup_email")
+            password = st.text_input(
+                "Password",
+                type="password",
+                key="pw_signup_pw",
+                help=f"At least {PW_MIN} characters.",
+            )
+            again = st.text_input("Password again", type="password", key="pw_signup_pw2")
+            go = st.form_submit_button(
+                "Create account",
+                type="primary",
+                icon=":material/person_add:",
+                use_container_width=True,
+            )
+        if go:
+            if password != again:
+                st.error("The two passwords do not match.")
+            else:
+                try:
+                    ok, msg = register(email, password)
+                except Exception:
+                    ok, msg = False, "Storage is unreachable right now. Try again in a minute."
+                if ok:
+                    _state()[K_PW_EMAIL] = email.strip().lower()
+                    st.rerun()
+                st.error(msg)
+
+    st.caption("Or")
     c1, c2 = st.columns(2)
     with c1:
         if st.button(
             "Sign in with Google",
-            type="primary",
             icon=":material/login:",
             use_container_width=True,
         ):
@@ -293,8 +505,65 @@ def account_ui() -> None:
             state.pop(K_DEMO, None)
             st.rerun()
         return
-    if getattr(st.user, "is_logged_in", False):
-        st.divider()
-        st.caption(f":material/account_circle: {st.user.email}")
-        if st.button("Sign out", icon=":material/logout:"):
+    email = current_email()
+    if not email:
+        return
+    by_password = signed_in_with_password()
+    st.divider()
+    st.caption(f":material/account_circle: {email}")
+    with st.popover(
+        "Change password" if by_password else "Password", icon=":material/key:"
+    ):
+        _password_form(email, by_password)
+    if st.button("Sign out", icon=":material/logout:"):
+        if by_password:
+            flush()
+            for k in (K_PW_EMAIL, K_UID, K_DB, K_FILES, K_DIRTY):
+                state.pop(k, None)
+            st.rerun()
+        else:
             st.logout()
+
+
+def _password_form(email: str, by_password: bool) -> None:
+    """Set or change the password of the signed-in account. Someone who came
+    in through Google is already proven to own the email; someone who came
+    in with a password has to give the current one again."""
+    import streamlit as st
+
+    if not by_password:
+        st.caption(
+            "Set a password to also log in with this email and a password, "
+            "without Google. Setting it again replaces the old one."
+        )
+    with st.form("pw_change", border=False):
+        current = (
+            st.text_input("Current password", type="password", key="pw_change_cur")
+            if by_password
+            else ""
+        )
+        new = st.text_input(
+            "New password",
+            type="password",
+            key="pw_change_new",
+            help=f"At least {PW_MIN} characters.",
+        )
+        again = st.text_input("New password again", type="password", key="pw_change_new2")
+        go = st.form_submit_button("Save password", type="primary", icon=":material/save:")
+    if not go:
+        return
+    if len(new) < PW_MIN:
+        st.error(f"Use at least {PW_MIN} characters.")
+    elif new != again:
+        st.error("The two new passwords do not match.")
+    else:
+        try:
+            if by_password:
+                ok, msg = check_password(email, current)
+                if not ok:
+                    st.error("The current password is wrong." if "Wrong" in msg else msg)
+                    return
+            set_password(email, new)
+            st.success("Password saved.")
+        except Exception:
+            st.error("Storage is unreachable right now. Try again in a minute.")

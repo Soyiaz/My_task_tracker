@@ -101,6 +101,17 @@ Honest limits: each user's database is uploaded whole when it changes (it
 is small), and if the same account is open in two places at once the last
 writer wins. Uploaded files are parked in the same bucket.
 
+**Email and password** works beside Google, with no extra setup. The
+landing page has *Log in* and *Sign up* tabs; a password is stored only as
+a salted PBKDF2 hash in `<account>/auth.json` in the bucket, and no
+database table is added or changed. An email that already has a tracker
+made through Google cannot be claimed by signing up with it: that owner
+signs in with Google and sets a password under *Password* in the sidebar.
+Eight wrong passwords in a row lock the account for 15 minutes. Honest
+limits: emails are not verified, there is no "forgot password" (sign in
+with Google and set a new one, or delete `auth.json` in the bucket), and a
+password login lasts for the browser session — a page refresh asks again.
+
 ### The journal (optional)
 
 The Journal page keeps its entries in a [Neon](https://neon.tech) Postgres
