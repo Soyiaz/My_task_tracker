@@ -43,6 +43,7 @@ nav = st.navigation(
             st.Page(
                 "app_pages/today.py", title="Today", icon=":material/wb_sunny:", default=True
             ),
+            st.Page("app_pages/duo.py", title="Duo", icon=":material/group:"),
             st.Page("app_pages/week.py", title="The week", icon=":material/date_range:"),
             st.Page(
                 "app_pages/calendar.py",

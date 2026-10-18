@@ -229,6 +229,25 @@ def set_task_status(task_id: int, status: str, cascade: bool = True) -> None:
     )
     if cascade and status == "done":
         _cascade_milestone(task_id, stamp)
+    _mirror_to_duo(task_id, status)
+
+
+def _mirror_to_duo(task_id: int, status: str) -> None:
+    """A task named exactly like one of today's duo tasks counts there too.
+    Optional and best effort: without the [duo] secrets this does nothing,
+    and a duo tracker that cannot be reached never blocks a tick here."""
+    from tracker import duo  # imported lazily: the integration is optional
+
+    if not duo.active():
+        return
+    task = get_task(task_id)
+    if not task:
+        return
+    note = duo.mirror_status(task["title"], task.get("day"), status)
+    if note:
+        import streamlit as st
+
+        st.toast(note, icon=":material/sync:")
 
 
 def update_task(task_id: int, **fields) -> None:
