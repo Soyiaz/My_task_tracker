@@ -150,6 +150,34 @@ Honest limit: the bot is awake only while the app is awake. Community
 Cloud puts apps to sleep after ~12 h without visitors; a free uptime
 pinger (e.g. cron-job.org hitting the app URL) keeps it always on.
 
+### The Duo page (optional)
+
+Lily and Zen also run a shared tracker together — a Telegram bot, a website
+and an Android app over one API — with a weekly duel that starts at 100 XP and
+only goes down. The **Duo** page shows it from here: both of today's lists
+side by side, the duel, the week and the month day by day (each day split
+between the two of them), the savings goal, what is coming up and what the
+other one just did. Lily's own duo tasks can be ticked, counted (+1), excused
+or marked not done right on the page.
+
+Ticks made in this tracker count there too: when a task here is named exactly
+like one of today's duo tasks (case does not matter), finishing it finishes the
+duo task, putting it back to *To do* undoes it, and *Dropped* uses one of the
+week's duo excuses. Nothing in this tracker's database changes, and a duo
+server that cannot be reached never holds up a tick — the page just says so.
+
+Add to the secrets (or set `DUO_URL` / `DUO_PASSWORD` for a local install):
+
+```toml
+[duo]
+url = "https://<the duo server>"
+password = "<your own duo password>"
+# hosted with accounts: only this account's ticks are mirrored
+email = "<your account email>"
+```
+
+Without it, the Duo page shows these setup steps and nothing else changes.
+
 ## The loop
 
 **Once a week** — open *The week*. Budget the hours across your tracks for
@@ -187,6 +215,7 @@ by domains should admit what it could not classify.
 
 | Page | What it is for |
 | --- | --- |
+| **Duo** | The tracker shared with a partner: both days, the weekly duel, the week and month split day by day, the savings goal. Optional — see above. |
 | **Today** | The day's plan, the stopwatch, per-task logging, today's entries — and *Also today*: the deadlines, exams, lectures and study sessions that fall on the day. |
 | **The week** | Budget → the work → review. The planning page. |
 | **Calendar** | Everything with a date in one place — tasks, application deadlines, planned application days, exams, lectures, study sessions — as a month grid, a week on a clock, a day in detail, or a list. Tap any item and it opens the page where it was saved, with that item at the top. |
@@ -377,10 +406,12 @@ tracker/
   notes.py           notebooks: the index, and the ink files under files/
   notecanvas.py      the Notability-style editor (a Streamlit v2 component)
   agenda.py          every dated thing as one feed; reminders; calendar jumps
+  duo.py             the shared duo tracker: its API, and mirroring ticks there
   entryform.py       the track → category → subcategory → detail picker
   taskedit.py        the flag, the edit popover and the row badges
   ui.py              colours, chips, the corner reminder, formatting
 app_pages/
+  duo.py             the shared tracker: both days, the duel, the week, goals
   today.py           the day's plan, stopwatch, structured logging
   week.py            budget / the work / review
   calendar.py        month, week, day and list views of everything dated
