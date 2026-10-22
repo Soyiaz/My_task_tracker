@@ -79,22 +79,79 @@ top[0].caption(
     f"{board['today']} · {board['daysLeftInWeek']} days left in the week · "
     f"🔥 {board['sharedStreak']} days done together"
 )
-if top[1].button("Refresh", icon=":material/refresh:", use_container_width=True):
+if top[1].button("Refresh", icon=":material/refresh:", width="stretch"):
     duo.refresh()
     st.rerun()
 
 # --- the duel ----------------------------------------------------------------
+# One card for the week's duel: each side in their own colour, the XP that is
+# left as a bar, who is ahead in the middle. Pure HTML so the two halves can
+# share one frame; the colours come from the same palette as the rest.
 
-duel = st.columns(len(members))
-for i, m in enumerate(members):
-    with duel[i]:
-        st.markdown(f"**:{'blue' if i == 0 else 'green'}[{m['name']}]** · level {m['level']}")
+import html as _html  # noqa: E402
+
+from tracker import look  # noqa: E402
+
+_pal = look.palette()
+
+
+def _side(i: int, m: dict) -> str:
+    c = MEMBER_COLORS[i % 2]
+    pct = max(0, min(100, round(100 * m["weeklyXp"] / rules["startXp"])))
+    owed = "".join(
+        f'<div class="duo-owe">⚖ owes a penalty task: {_html.escape(r)}</div>' for r in m["pendingRewards"]
+    )
+    return (
+        f'<div class="duo-side" style="--c:{c}">'
+        f'<div class="duo-name">{_html.escape(m["name"])}<span>level {m["level"]}</span></div>'
+        f'<div class="duo-xp">{m["weeklyXp"]}<span>/ {rules["startXp"]} XP</span></div>'
+        f'<div class="duo-bar"><div style="width:{pct}%"></div></div>'
+        f'<div class="duo-meta">{m["done"]}/{m["total"]} done today · {m["excusesLeft"]} excuses left</div>'
+        f"{owed}</div>"
+    )
+
+
+if len(members) >= 2:
+    a, b = members[0], members[1]
+    gap = a["weeklyXp"] - b["weeklyXp"]
+    verdict = (
+        "Dead even" if gap == 0 else f"{(a if gap > 0 else b)['name']} leads by {abs(gap)}"
+    )
+    st.html(
+        f"""
+<style>
+.duo-duel {{ display:grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center;
+  padding: 1.1rem 1.2rem; border-radius: 20px; background: {_pal['card']}; border: 1px solid {_pal['card_border']};
+  box-shadow: {_pal['shadow']}; -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); margin-bottom: 1rem; }}
+.duo-side {{ min-width: 0; }}
+.duo-name {{ font-weight: 700; font-size: 1.05rem; color: var(--c); display:flex; align-items: baseline; gap: .5rem; }}
+.duo-name span {{ font-size: .74rem; font-weight: 600; color: {_pal['muted']}; text-transform: uppercase; letter-spacing: .06em; }}
+.duo-xp {{ font-size: 2.1rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; margin: .15rem 0 .35rem; color: {_pal['text']}; font-variant-numeric: tabular-nums; }}
+.duo-xp span {{ font-size: .85rem; font-weight: 600; color: {_pal['muted']}; margin-left: .35rem; letter-spacing: 0; }}
+.duo-bar {{ height: .6rem; border-radius: 999px; background: {_pal['track']}; overflow: hidden; }}
+.duo-bar > div {{ height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--c), color-mix(in srgb, var(--c) 55%, white)); transition: width .6s ease; }}
+.duo-meta {{ font-size: .8rem; color: {_pal['muted']}; margin-top: .4rem; }}
+.duo-owe {{ font-size: .8rem; color: #e11d48; font-weight: 600; margin-top: .3rem; }}
+.duo-vs {{ text-align: center; min-width: 6.5rem; }}
+.duo-vs b {{ display: inline-grid; place-items: center; width: 2.6rem; height: 2.6rem; border-radius: 50%;
+  background: linear-gradient(135deg, {_pal['primary']}, {_pal['primary2']}); color: #fff; font-size: .8rem; letter-spacing: .08em;
+  box-shadow: 0 8px 18px {_pal['primary_shadow']}; }}
+.duo-vs div {{ font-size: .78rem; color: {_pal['muted']}; margin-top: .45rem; }}
+.duo-side:last-child {{ text-align: right; }}
+.duo-side:last-child .duo-name {{ justify-content: flex-end; }}
+.duo-side:last-child .duo-bar > div {{ margin-left: auto; }}
+@media (max-width: 760px) {{ .duo-duel {{ grid-template-columns: 1fr; }} .duo-vs {{ order: -1; }}
+  .duo-side:last-child {{ text-align: left; }} .duo-side:last-child .duo-name {{ justify-content: flex-start; }} .duo-side:last-child .duo-bar > div {{ margin-left: 0; }} }}
+</style>
+<div class="duo-duel">{_side(0, a)}<div class="duo-vs"><b>VS</b><div>{_html.escape(verdict)}<br>{board['daysLeftInWeek']} days left</div></div>{_side(1, b)}</div>
+"""
+    )
+else:
+    for i, m in enumerate(members):
         st.progress(
             max(0.0, min(m["weeklyXp"] / rules["startXp"], 1.0)),
-            text=f"♥ {m['weeklyXp']} / {rules['startXp']} · {m['excusesLeft']} excuses left",
+            text=f"{m['name']} · ♥ {m['weeklyXp']} / {rules['startXp']} · {m['excusesLeft']} excuses left",
         )
-        for reward in m["pendingRewards"]:
-            st.warning(f"Owes a penalty task: {reward}", icon=":material/gavel:")
 
 # --- both days ---------------------------------------------------------------
 
@@ -130,20 +187,20 @@ def _my_row(o: dict) -> None:
                 on_change=_do,
                 args=(o["taskId"], o["date"], "undo" if o["status"] == "done" else "done"),
             )
-    with row[1].popover("", icon=":material/more_horiz:", use_container_width=True):
+    with row[1].popover("", icon=":material/more_horiz:", width="stretch"):
         st.button(
             f"Not done (−{rules['penalty']['missed']})", key=f"m_{o['_id']}",
-            on_click=_do, args=(o["taskId"], o["date"], "missed"), use_container_width=True,
+            on_click=_do, args=(o["taskId"], o["date"], "missed"), width="stretch",
         )
         me = next((m for m in members if m["userId"] == my_id), None)
         st.button(
             f"Excuse ({me['excusesLeft'] if me else 0} left)", key=f"e_{o['_id']}",
             disabled=bool(me and me["excusesLeft"] <= 0),
-            on_click=_do, args=(o["taskId"], o["date"], "excused"), use_container_width=True,
+            on_click=_do, args=(o["taskId"], o["date"], "excused"), width="stretch",
         )
         st.button(
             "Undo", key=f"u_{o['_id']}", disabled=o["status"] == "pending" and o["progress"] == 0,
-            on_click=_do, args=(o["taskId"], o["date"], "undo"), use_container_width=True,
+            on_click=_do, args=(o["taskId"], o["date"], "undo"), width="stretch",
         )
 
 
@@ -229,7 +286,7 @@ with right:
                 with st.form(f"goal_{goal['_id']}", clear_on_submit=True, border=False):
                     cols = st.columns([2, 1])
                     amount = cols[0].number_input("Add", min_value=0.0, step=100.0, label_visibility="collapsed")
-                    if cols[1].form_submit_button("Add", use_container_width=True) and amount:
+                    if cols[1].form_submit_button("Add", width="stretch") and amount:
                         try:
                             duo.contribute(goal["_id"], amount)
                             _flash(f"Added {amount:,.0f} {goal['unit']}")

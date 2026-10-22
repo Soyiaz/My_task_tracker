@@ -362,7 +362,7 @@ def _landing() -> None:
             email = st.text_input("Email", key="pw_login_email")
             password = st.text_input("Password", type="password", key="pw_login_pw")
             go = st.form_submit_button(
-                "Log in", type="primary", icon=":material/login:", use_container_width=True
+                "Log in", type="primary", icon=":material/login:", width="stretch"
             )
         if go:
             try:
@@ -387,7 +387,7 @@ def _landing() -> None:
                 "Create account",
                 type="primary",
                 icon=":material/person_add:",
-                use_container_width=True,
+                width="stretch",
             )
         if go:
             if password != again:
@@ -408,14 +408,14 @@ def _landing() -> None:
         if st.button(
             "Sign in with Google",
             icon=":material/login:",
-            use_container_width=True,
+            width="stretch",
         ):
             st.login()
     with c2:
         if st.button(
             "Just try the demo",
             icon=":material/visibility:",
-            use_container_width=True,
+            width="stretch",
         ):
             _state()[K_DEMO] = True
             st.rerun()

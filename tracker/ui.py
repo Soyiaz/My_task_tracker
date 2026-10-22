@@ -150,8 +150,9 @@ def require_tracks() -> None:
 
 
 def page_header(title: str, subtitle: str, icon: str) -> None:
-    st.title(f"{icon} {title}")
-    st.caption(subtitle)
+    from tracker import look
+
+    look.hero(title, subtitle, icon)
 
 
 def planned_vs_actual_chart(df, x: str, planned: str, actual: str, height: int = 220):

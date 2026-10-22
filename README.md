@@ -26,6 +26,17 @@ flying, income, a startup, a student club and personal growth. It is there
 as a worked example, not a rule. Keep whatever is useful and delete the
 rest.
 
+### Hosting on your own server
+
+The app can run all day on an ordinary cPanel account with SSH, next to
+whatever else is there, kept alive by pm2 and reached under a sub-path such
+as `https://example.com/tracker`. The `deploy/` folder holds everything that
+takes: an install script that clones the repo and builds a venv, a pm2
+ecosystem file, the Apache rules that forward the path and Streamlit's
+WebSocket to the local port, a secrets template, and a Passenger fallback for
+when pm2 is not an option. The hosted copy starts from an empty database;
+nothing is migrated. The step-by-step runbook is `deploy/DEPLOY.md`.
+
 ## Make it yours
 
 Everything about the structure is editable inside the app — no code, no

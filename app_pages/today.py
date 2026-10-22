@@ -161,7 +161,7 @@ with st.container(horizontal=True):
             else None
         ),
         border=True,
-        chart_data=last7,
+        chart_data=last7 if any(last7) else None,
         chart_type="bar",
     )
     st.metric(

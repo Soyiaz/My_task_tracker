@@ -10,13 +10,15 @@ from datetime import date, timedelta
 
 import streamlit as st
 
-from tracker import cloud, db
+from tracker import cloud, db, look
 
 st.set_page_config(
     page_title="Plan tracker",
     page_icon=":material/target:",
     layout="wide",
 )
+look.inject()
+look.logo()
 
 # In a deployment with login configured this gates the session and points it
 # at the signed-in user's own database; everywhere else it does nothing.

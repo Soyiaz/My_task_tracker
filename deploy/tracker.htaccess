@@ -1,0 +1,52 @@
+# Plan tracker: reverse-proxy /tracker to the Streamlit process on 127.0.0.1:8601.
+#
+# PASTE this block into the document root's existing .htaccess (usually
+# ~/public_html/.htaccess) ABOVE any catch-all rewrite that is already there.
+# Do NOT replace that file: it carries cPanel's own rules (PHP handler, the
+# Node.js app mapping, SSL redirects) and losing them breaks the API.
+#
+# Requirements on the Apache side: mod_rewrite, mod_proxy, mod_proxy_http and
+# mod_proxy_wstunnel, with the [P] (proxy) flag permitted in .htaccess. Most
+# cPanel/EasyApache 4 servers ship all four; whether [P] is allowed is a
+# server policy. Test after pasting:
+#
+#   curl -sI https://aauaiandrobotics.com/tracker/_stcore/health   ->  HTTP 200
+#
+# If you get a 500 and the Apache error log says "RewriteRule: proxy flag not
+# allowed" (or "attempt to make remote request from mod_rewrite without
+# proxy enabled"), [P] is not permitted for your account. Then either
+#   (a) ask the host to enable mod_proxy / mod_proxy_wstunnel for your domain
+#       (or to add the ProxyPass lines at the bottom to your vhost), or
+#   (b) use cPanel's own proxy: "Setup Node.js App" / "Setup Python App" maps
+#       a URL to a local port via Passenger. See deploy/DEPLOY.md, section
+#       "If [P] is not allowed", and deploy/passenger_wsgi.py.
+#
+# The port must match PORT in deploy/ecosystem.streamlit.config.js and the path
+# must match BASE_URL_PATH; both default to 8601 and /tracker.
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# 1. WebSocket. Streamlit keeps one open at /tracker/_stcore/stream; without
+#    this rule the page loads and then sits on "Please wait..." forever.
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteCond %{HTTP:Connection} upgrade [NC]
+RewriteRule ^tracker/_stcore/stream$ ws://127.0.0.1:8601/tracker/_stcore/stream [P,L]
+
+# Any other upgrade request under /tracker goes the same way.
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteCond %{HTTP:Connection} upgrade [NC]
+RewriteRule ^tracker/(.*)$ ws://127.0.0.1:8601/tracker/$1 [P,L]
+
+# 2. Plain HTTP: the page, static assets, health, media, file uploads.
+RewriteRule ^tracker$ http://127.0.0.1:8601/tracker/ [P,L]
+RewriteRule ^tracker/(.*)$ http://127.0.0.1:8601/tracker/$1 [P,L]
+</IfModule>
+
+# Equivalent vhost directives, for the host to add if [P] is refused in
+# .htaccess (they cannot go in .htaccess themselves):
+#
+#   ProxyPass        /tracker/_stcore/stream ws://127.0.0.1:8601/tracker/_stcore/stream
+#   ProxyPassReverse /tracker/_stcore/stream ws://127.0.0.1:8601/tracker/_stcore/stream
+#   ProxyPass        /tracker http://127.0.0.1:8601/tracker
+#   ProxyPassReverse /tracker http://127.0.0.1:8601/tracker
