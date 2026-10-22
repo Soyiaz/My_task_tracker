@@ -16,7 +16,7 @@ from datetime import date, time, timedelta
 import pandas as pd
 import streamlit as st
 
-from tracker import agenda, entryform, planning, scoring, structure, ui
+from tracker import agenda, duo, duosync, entryform, planning, scoring, structure, ui
 
 STATUS_UI = {
     "todo": "Not started",
@@ -183,6 +183,17 @@ def new_task_form(
             key=f"{key_prefix}_minutes",
         )
         urgent = urgent_toggle(f"{key_prefix}_urgent")
+        on_duo = both = False
+        if duo.active():
+            on_duo = st.toggle(
+                "Also on Duo",
+                key=f"{key_prefix}_duo",
+                help="Adds it to the duo tracker too, on the same day, so the "
+                "website, the bot and the widgets show it. Missing it there "
+                "costs XP, so only send what you mean to do.",
+            )
+            if on_duo:
+                both = st.checkbox("For both of us", key=f"{key_prefix}_duo_both")
     with st.container(horizontal=True, vertical_alignment="bottom"):
         day = day_picker(f"{key_prefix}_when", default_day, default_day)
         start = start_time_question(
@@ -214,6 +225,11 @@ def new_task_form(
         st.toast(
             f"Task added · {day:%a %d %b} {start:%H:%M}" + (" · urgent" if urgent else "")
         )
+        if on_duo:
+            try:
+                st.toast(duosync.send(task_id, both), icon=":material/group:")
+            except duo.DuoError as exc:
+                st.toast(f"Not added to Duo: {exc}", icon=":material/sync_problem:")
         st.rerun()
     return None
 
@@ -344,6 +360,26 @@ def edit_form(task_id: int) -> None:
             "against this task. Editing it here leaves those entries alone."
         )
 
+    if duo.active():
+        link = duosync.link_for(task_id)
+        with st.container(horizontal=True, vertical_alignment="center"):
+            if link and not link.get("gone"):
+                st.caption(
+                    "On Duo" + (" · came from there" if link["origin"] == "duo" else "")
+                    + " · ticks, edits and deletes carry over."
+                )
+                if st.button("Take off Duo", icon=":material/group_off:", key=f"ed_duo_off_{task_id}"):
+                    st.toast(duosync.remove(task_id), icon=":material/group_off:")
+                    st.rerun()
+            else:
+                ed_both = st.checkbox("For both of us", key=f"ed_duo_both_{task_id}")
+                if st.button("Send to Duo", icon=":material/group:", key=f"ed_duo_on_{task_id}"):
+                    try:
+                        st.toast(duosync.send(task_id, ed_both), icon=":material/group:")
+                    except duo.DuoError as exc:
+                        st.toast(f"Not added to Duo: {exc}", icon=":material/sync_problem:")
+                    st.rerun()
+
     with st.container(horizontal=True):
         if st.button("Save", type="primary", icon=":material/save:", key=f"ed_save_{task_id}"):
             if not title.strip():
@@ -393,6 +429,10 @@ def badges(task: dict, today: date | None = None) -> None:
             st.badge(f"overdue since {d:%d %b}", icon=":material/schedule:", color="red")
     if task.get("status") == "dropped":
         st.badge("dropped", color="gray")
+    if task.get("id") is not None:
+        link = duosync.link_for(int(task["id"]))
+        if link and not link.get("gone"):
+            st.badge("duo", icon=":material/group:", color="blue")
     at = planning.task_times().get(int(task["id"])) if task.get("id") is not None else None
     if at:
         st.badge(at, icon=":material/schedule:", color="blue")

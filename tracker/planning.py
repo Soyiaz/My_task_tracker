@@ -236,14 +236,17 @@ def _mirror_to_duo(task_id: int, status: str) -> None:
     """A task named exactly like one of today's duo tasks counts there too.
     Optional and best effort: without the [duo] secrets this does nothing,
     and a duo tracker that cannot be reached never blocks a tick here."""
-    from tracker import duo  # imported lazily: the integration is optional
+    from tracker import duo, duosync  # imported lazily: the integration is optional
 
-    if not duo.active():
+    if not duo.active() or duosync._pulling:
         return
     task = get_task(task_id)
     if not task:
         return
-    note = duo.mirror_status(task["title"], task.get("day"), status)
+    link = duosync.link_for(task_id)
+    if link and link.get("gone"):
+        return
+    note = duo.mirror_status(task["title"], task.get("day"), status, link["task"] if link else None)
     if note:
         import streamlit as st
 
@@ -292,6 +295,12 @@ def update_task(task_id: int, **fields) -> None:
     )
     if newly_done:
         _cascade_milestone(task_id, fields["done_on"])
+    if "status" in fields and current["status"] != fields["status"]:
+        _mirror_to_duo(task_id, fields["status"])
+    if "title" in fields or "day" in fields:
+        from tracker import duosync
+
+        duosync.push_edit(task_id, {k: fields[k] for k in ("title", "day") if k in fields})
 
 
 def set_task_urgent(task_id: int, urgent: bool) -> None:
@@ -313,6 +322,9 @@ def schedule_task(task_id: int, day: date | None) -> None:
 
 
 def delete_task(task_id: int) -> None:
+    from tracker import duosync
+
+    duosync.push_delete(task_id)
     db.execute("UPDATE time_log SET task_id = NULL WHERE task_id = ?", (int(task_id),))
     db.execute("DELETE FROM tasks WHERE id = ?", (int(task_id),))
 
@@ -512,3 +524,6 @@ def set_task_time(task_id: int, hhmm: str | None) -> None:
     alive = {int(r["id"]) for r in db.query("SELECT id FROM tasks").to_dict("records")}
     times = {k: v for k, v in times.items() if k in alive}
     db.set_setting("task_times", json.dumps({str(k): v for k, v in sorted(times.items())}))
+    from tracker import duosync
+
+    duosync.push_edit(task_id, {"time": hhmm})

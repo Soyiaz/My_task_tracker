@@ -37,7 +37,14 @@ except Exception:
     pass
 
 # Imported after init so the schema exists before anything queries it.
-from tracker import agenda, planning, scoring, ui  # noqa: E402
+from tracker import agenda, duosync, planning, scoring, ui  # noqa: E402
+
+# Today's duo tasks come in, and what changed there (on the website, in the
+# bot, on a widget) lands here. At most once a minute; never fatal.
+try:
+    duosync.pull()
+except Exception:
+    pass
 
 nav = st.navigation(
     {

@@ -174,6 +174,7 @@ def refresh() -> None:
     week.clear()
     month.clear()
     structure.clear()
+    tasks.clear()
 
 
 def mark(task_id: str, day: str, action: str, amount: int = 1) -> dict:
@@ -185,6 +186,43 @@ def mark(task_id: str, day: str, action: str, amount: int = 1) -> dict:
     )
     refresh()
     return out
+
+
+def partner_id() -> str | None:
+    """The other member's duo id."""
+    try:
+        mine = me()
+        return next((m["userId"] for m in board()["members"] if m["userId"] != mine), None)
+    except DuoError:
+        return None
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def tasks() -> list[dict]:
+    return _request("GET", "/api/tasks")
+
+
+def create_task(name: str, day: str, time_: str | None, assigned: list[str], area: str = "") -> dict:
+    """A one-time duo task on that day, for the given members."""
+    body = {
+        "name": name, "type": "one-time", "assignedTo": assigned,
+        "schedule": {"date": day, **({"time": time_} if time_ else {})},
+        "startDate": day, "area": area, "description": "From the plan tracker",
+    }
+    out = _request("POST", "/api/tasks", body, auth=True)
+    refresh()
+    return out
+
+
+def update_task(task_id: str, body: dict) -> dict:
+    out = _request("PUT", f"/api/tasks/{task_id}", body, auth=True)
+    refresh()
+    return out
+
+
+def delete_task(task_id: str) -> None:
+    _request("DELETE", f"/api/tasks/{task_id}", auth=True)
+    refresh()
 
 
 def contribute(goal_id: str, amount: float, note: str = "") -> dict:
@@ -200,10 +238,11 @@ def _norm(s: str) -> str:
     return " ".join(str(s).lower().split())
 
 
-def mirror_status(title: str, day: str | None, status: str) -> str | None:
-    """Best effort: if one of Lily's duo tasks on that day carries the same
-    name as this tracker's task, apply the same outcome there. Returns a short
-    note for the UI, or None when nothing matched. Never raises."""
+def mirror_status(title: str, day: str | None, status: str, duo_task_id: str | None = None) -> str | None:
+    """Best effort: apply the same outcome to the linked duo occurrence, or
+    failing a link, to one of your duo tasks on that day carrying the same
+    name. Returns a short note for the UI, or None when nothing matched.
+    Never raises."""
     action = MIRROR.get(status)
     if not action or not active():
         return None
@@ -215,10 +254,14 @@ def mirror_status(title: str, day: str | None, status: str) -> str | None:
             return None
         day = day or b["today"]
         candidates = member["items"] + member.get("yesterdayPending", [])
-        match = next(
-            (o for o in candidates if o["date"] == day and _norm(o["taskName"]) == _norm(title)),
-            None,
-        )
+        match = None
+        if duo_task_id:
+            match = next((o for o in candidates if str(o["taskId"]) == str(duo_task_id) and o["date"] == day), None)
+        if match is None:
+            match = next(
+                (o for o in candidates if o["date"] == day and _norm(o["taskName"]) == _norm(title)),
+                None,
+            )
         if match is None or (action == "undo" and match["status"] == "pending"):
             return None
         mark(match["taskId"], day, action)

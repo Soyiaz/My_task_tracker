@@ -171,11 +171,17 @@ between the two of them), the savings goal, what is coming up and what the
 other one just did. Lily's own duo tasks can be ticked, counted (+1), excused
 or marked not done right on the page.
 
-Ticks made in this tracker count there too: when a task here is named exactly
-like one of today's duo tasks (case does not matter), finishing it finishes the
-duo task, putting it back to *To do* undoes it, and *Dropped* uses one of the
-week's duo excuses. Nothing in this tracker's database changes, and a duo
-server that cannot be reached never holds up a tick — the page just says so.
+Tasks flow both ways. Your duo tasks for today come into this tracker as
+tasks on that day — filed under the track named like their duo area, or under
+a *Duo* track — and whatever happens to them on the website, in the bot or on
+a widget (ticked, undone, renamed, re-timed, deleted) shows here within a
+minute; ticking them here counts there. A task made here can go the other way:
+*Also on Duo* on the add form, or *Send to Duo* in its edit popover, creates
+it in the duo tracker on the same day, for you or for both of you, and from
+then on renaming, moving, timing, ticking or deleting it here does the same
+there. *Take off Duo* breaks the link. Tasks that merely share a name with a
+duo task still tick it, as before. A duo server that cannot be reached never
+holds anything up — the page just says so.
 
 Add to the secrets (or set `DUO_URL` / `DUO_PASSWORD` for a local install):
 
