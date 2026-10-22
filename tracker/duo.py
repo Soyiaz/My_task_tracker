@@ -175,6 +175,7 @@ def refresh() -> None:
     month.clear()
     structure.clear()
     tasks.clear()
+    opportunities.clear()
 
 
 def mark(task_id: str, day: str, action: str, amount: int = 1) -> dict:
@@ -223,6 +224,31 @@ def update_task(task_id: str, body: dict) -> dict:
 def delete_task(task_id: str) -> None:
     _request("DELETE", f"/api/tasks/{task_id}", auth=True)
     refresh()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def opportunities() -> list[dict]:
+    return _request("GET", "/api/opportunities")
+
+
+def create_opportunity(body: dict) -> dict:
+    out = _request("POST", "/api/opportunities", body, auth=True)
+    opportunities.clear()
+    board.clear()
+    return out
+
+
+def update_opportunity(opp_id: str, body: dict) -> dict:
+    out = _request("PUT", f"/api/opportunities/{opp_id}", body, auth=True)
+    opportunities.clear()
+    board.clear()
+    return out
+
+
+def delete_opportunity(opp_id: str) -> None:
+    _request("DELETE", f"/api/opportunities/{opp_id}", auth=True)
+    opportunities.clear()
+    board.clear()
 
 
 def contribute(goal_id: str, amount: float, note: str = "") -> dict:

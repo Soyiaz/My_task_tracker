@@ -135,7 +135,7 @@ def add(
     notes: str = "",
     status: str = "Watching",
 ) -> int:
-    return store.add(
+    row_id = store.add(
         KEY,
         {
             "name": name.strip(),
@@ -154,6 +154,18 @@ def add(
             "status": status if status in STATUS else "Watching",
         },
     )
+    _sync(row_id)
+    return row_id
+
+
+def _sync(row_id: int) -> None:
+    """Carry the change to the duo tracker, if it is connected. Never raises."""
+    try:
+        from tracker import duosync
+
+        duosync.push_opportunity(int(row_id))
+    except Exception:
+        pass
 
 
 def update(row_id: int, **fields) -> None:
@@ -176,9 +188,16 @@ def update(row_id: int, **fields) -> None:
             if cur and not cur["applied_on"]:
                 fields["applied_on"] = date.today().isoformat()
     store.update(KEY, row_id, **fields)
+    _sync(row_id)
 
 
 def delete(row_id: int) -> None:
+    try:
+        from tracker import duosync
+
+        duosync.delete_opportunity(int(row_id))
+    except Exception:
+        pass
     store.remove(KEY, row_id)
 
 
@@ -189,6 +208,7 @@ def set_requirement(row_id: int, index: int, done: bool) -> None:
     reqs = cur["requirements"]
     reqs[index]["done"] = bool(done)
     store.update(KEY, row_id, requirements=reqs)
+    _sync(row_id)
 
 
 # --- what is near ------------------------------------------------------------

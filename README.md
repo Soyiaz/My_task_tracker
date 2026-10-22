@@ -182,8 +182,11 @@ on renaming, moving, timing, ticking or deleting it here does the same there,
 while a day moved or a task deleted on the website comes back here. Switch
 *On Duo* off on the add form, or *Take off Duo* in the edit popover, to keep
 a task to yourself. Tasks that merely share a name with a duo task still tick
-it, as before. A duo server that cannot be reached never holds anything up —
-the page just says so.
+it, as before. Opportunities travel the same road: every one here is on the
+duo tracker, whose app and website have an Opportunities page of their own,
+and an edit, a ticked requirement or a deletion on either side reaches the
+other within a minute. A duo server that cannot be reached never holds
+anything up — the page just says so.
 
 Add to the secrets (or set `DUO_URL` / `DUO_PASSWORD` for a local install):
 

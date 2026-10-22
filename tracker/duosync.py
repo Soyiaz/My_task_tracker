@@ -16,8 +16,13 @@ makes the tracker one more spoke:
   the bot or a widget — ticked, undone, renamed, re-timed, deleted — shows
   here on the next pull; ticking them here counts there.
 
+Opportunities go the same way: every one here is on the duo tracker (its
+app and website have an Opportunities page), and edits, requirement ticks
+and deletions on either side reach the other.
+
 The link between a task here and an occurrence there (duo task id + day)
-lives in the ``duo_links`` setting, so no table changes. Pulling happens at
+lives in the ``duo_links`` setting, and the opportunity links in
+``duo_opp_links``, so no table changes. Pulling happens at
 most once a minute per session and never blocks the page for long: the duo
 API is read with an 8 s timeout and every failure is swallowed.
 """
@@ -30,7 +35,7 @@ from datetime import date
 
 import streamlit as st
 
-from tracker import db, duo, planning, scoring
+from tracker import db, duo, opps, planning, scoring
 
 KEY = "duo_links"
 PULL_EVERY = 60  # seconds, per session
@@ -360,9 +365,195 @@ def pull(force: bool = False) -> dict:
     finally:
         _pulling = False
 
+    try:
+        counts["opportunities"] = pull_opportunities()
+    except Exception:
+        counts["opportunities"] = {}
+
     if counts["new"]:
         st.toast(f"{counts['new']} task{'s' if counts['new'] != 1 else ''} came in from Duo", icon=":material/sync:")
     if counts.get("sent"):
         st.toast(f"{counts['sent']} task{'s' if counts['sent'] != 1 else ''} sent to Duo", icon=":material/sync:")
     return counts
 
+
+
+# --- opportunities, both ways ----------------------------------------------------------
+
+OPP_KEY = "duo_opp_links"
+
+# tracker field -> duo field
+OPP_FIELDS = {
+    "name": "name", "organisation": "organisation", "category": "category", "link": "link",
+    "deadline": "deadline", "deadline_time": "deadlineTime", "apply_from": "applyFrom",
+    "apply_on": "applyOn", "apply_time": "applyTime", "requirements": "requirements",
+    "notes": "notes", "status": "status", "applied_on": "appliedOn",
+}
+
+
+def opp_links() -> dict[int, str]:
+    """{tracker opportunity id: duo opportunity id}"""
+    try:
+        raw = json.loads(db.get_setting(OPP_KEY) or "{}")
+    except ValueError:
+        raw = {}
+    out = {}
+    for k, v in raw.items():
+        try:
+            if v:
+                out[int(k)] = str(v)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _save_opp_links(data: dict[int, str]) -> None:
+    db.set_setting(OPP_KEY, json.dumps({str(k): v for k, v in sorted(data.items())}))
+
+
+def _iso(v) -> str | None:
+    return v.isoformat() if isinstance(v, date) else (str(v)[:10] if v else None)
+
+
+def _to_duo(row: dict) -> dict:
+    """A tracker opportunity in the duo tracker's shape."""
+    out = {}
+    for ours, theirs in OPP_FIELDS.items():
+        v = row.get(ours)
+        if ours in ("deadline", "apply_from", "apply_on", "applied_on"):
+            v = _iso(v)
+        elif ours == "requirements":
+            v = [{"text": str(q.get("text", "")), "done": bool(q.get("done"))} for q in (v or []) if str(q.get("text", "")).strip()]
+        elif ours in ("deadline_time", "apply_time"):
+            v = v or None
+        else:
+            v = "" if v is None else str(v)
+        out[theirs] = v
+    return out
+
+
+def _from_duo(o: dict) -> dict:
+    """A duo opportunity as keyword arguments for opps.update / opps.add."""
+    out = {}
+    for ours, theirs in OPP_FIELDS.items():
+        v = o.get(theirs)
+        if ours in ("deadline", "apply_from", "apply_on", "applied_on"):
+            v = date.fromisoformat(str(v)[:10]) if v else None
+        elif ours == "requirements":
+            v = [{"text": str(q.get("text", "")), "done": bool(q.get("done"))} for q in (v or [])]
+        elif ours in ("deadline_time", "apply_time"):
+            v = v or None
+        else:
+            v = "" if v is None else str(v)
+        out[ours] = v
+    return out
+
+
+def _same(row: dict, o: dict) -> bool:
+    mine = _to_duo(row)
+    theirs = _to_duo(_from_duo(o))
+    return mine == theirs
+
+
+def push_opportunity(row_id: int) -> None:
+    """After an opportunity was added or changed here: create or update it
+    there. Best effort, never raises."""
+    if _pulling or not duo.active():
+        return
+    row = opps.get(row_id)
+    if row is None:
+        return
+    data = opp_links()
+    try:
+        if row_id in data:
+            duo.update_opportunity(data[row_id], _to_duo(row))
+        else:
+            me_id = duo.me()
+            if not me_id:
+                return
+            created = duo.create_opportunity({**_to_duo(row), "assignedTo": [me_id], "source": "streamlit"})
+            data[row_id] = created["_id"]
+            _save_opp_links(data)
+    except duo.DuoError as exc:
+        st.toast(f"Duo tracker not updated: {exc}", icon=":material/sync_problem:")
+
+
+def delete_opportunity(row_id: int) -> None:
+    """Before an opportunity is deleted here: delete it there too."""
+    data = opp_links()
+    duo_id = data.pop(int(row_id), None)
+    if duo_id is None:
+        return
+    _save_opp_links(data)
+    if _pulling or not duo.active():
+        return
+    try:
+        duo.delete_opportunity(duo_id)
+    except duo.DuoError as exc:
+        st.toast(f"Duo tracker not updated: {exc}", icon=":material/sync_problem:")
+
+
+def pull_opportunities() -> dict:
+    """Everything there that is yours comes here; everything here goes
+    there; what changed on either side wins on the side it changed."""
+    global _pulling
+    counts = {"new": 0, "updated": 0, "removed": 0, "sent": 0}
+    if not duo.active():
+        return counts
+    try:
+        theirs = {str(o["_id"]): o for o in duo.opportunities()}
+        me_id = duo.me()
+    except duo.DuoError:
+        return counts
+    if not me_id:
+        return counts
+
+    data = opp_links()
+    rows = {r["id"]: r for r in opps.all_rows()}
+    _pulling = True
+    try:
+        # Linked: deleted there -> deleted here; changed there -> changed here.
+        for rid, duo_id in list(data.items()):
+            row = rows.get(rid)
+            o = theirs.get(duo_id)
+            if row is None:
+                data.pop(rid, None)
+                continue
+            if o is None:
+                opps.delete(rid)
+                data.pop(rid, None)
+                rows.pop(rid, None)
+                counts["removed"] += 1
+                continue
+            if not _same(row, o):
+                opps.update(rid, **_from_duo(o))
+                counts["updated"] += 1
+
+        # Theirs and mine, not yet here: bring it in.
+        linked_duo = set(data.values())
+        for duo_id, o in theirs.items():
+            if duo_id in linked_duo or me_id not in (o.get("assignedTo") or []):
+                continue
+            f = _from_duo(o)
+            rid = opps.add(
+                f["name"], f["category"], f["deadline"], f["deadline_time"], f["apply_from"], f["apply_on"],
+                f["apply_time"], [], f["link"], f["organisation"], f["notes"], f["status"],
+            )
+            opps.update(rid, requirements=f["requirements"], applied_on=f["applied_on"])
+            data[rid] = duo_id
+            counts["new"] += 1
+
+        # Here but not there: send it.
+        for rid, row in rows.items():
+            if rid in data:
+                continue
+            try:
+                created = duo.create_opportunity({**_to_duo(row), "assignedTo": [me_id], "source": "streamlit"})
+            except duo.DuoError:
+                break
+            data[rid] = created["_id"]
+            counts["sent"] += 1
+        _save_opp_links(data)
+    finally:
+        _pulling = False
+    return counts
