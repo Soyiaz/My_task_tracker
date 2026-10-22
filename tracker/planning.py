@@ -244,7 +244,7 @@ def _mirror_to_duo(task_id: int, status: str) -> None:
     if not task:
         return
     link = duosync.link_for(task_id)
-    if link and link.get("gone"):
+    if link and not duosync.on_duo(link):
         return
     note = duo.mirror_status(task["title"], task.get("day"), status, link["task"] if link else None)
     if note:

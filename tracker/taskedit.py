@@ -186,11 +186,13 @@ def new_task_form(
         on_duo = both = False
         if duo.active():
             on_duo = st.toggle(
-                "Also on Duo",
+                "On Duo",
+                value=True,
                 key=f"{key_prefix}_duo",
-                help="Adds it to the duo tracker too, on the same day, so the "
-                "website, the bot and the widgets show it. Missing it there "
-                "costs XP, so only send what you mean to do.",
+                help="Everything with a day goes to the duo tracker too, so the "
+                "website, the bot and the widgets show it. Switch it off for a "
+                "task you would rather keep to yourself; missing a task there "
+                "costs XP.",
             )
             if on_duo:
                 both = st.checkbox("For both of us", key=f"{key_prefix}_duo_both")
@@ -225,11 +227,14 @@ def new_task_form(
         st.toast(
             f"Task added · {day:%a %d %b} {start:%H:%M}" + (" · urgent" if urgent else "")
         )
-        if on_duo:
-            try:
-                st.toast(duosync.send(task_id, both), icon=":material/group:")
-            except duo.DuoError as exc:
-                st.toast(f"Not added to Duo: {exc}", icon=":material/sync_problem:")
+        if duo.active():
+            if on_duo:
+                try:
+                    st.toast(duosync.send(task_id, both), icon=":material/group:")
+                except duo.DuoError as exc:
+                    st.toast(f"Not added to Duo: {exc}", icon=":material/sync_problem:")
+            else:
+                duosync.opt_out(task_id)
         st.rerun()
     return None
 
@@ -363,7 +368,7 @@ def edit_form(task_id: int) -> None:
     if duo.active():
         link = duosync.link_for(task_id)
         with st.container(horizontal=True, vertical_alignment="center"):
-            if link and not link.get("gone"):
+            if duosync.on_duo(link):
                 st.caption(
                     "On Duo" + (" · came from there" if link["origin"] == "duo" else "")
                     + " · ticks, edits and deletes carry over."
@@ -430,8 +435,7 @@ def badges(task: dict, today: date | None = None) -> None:
     if task.get("status") == "dropped":
         st.badge("dropped", color="gray")
     if task.get("id") is not None:
-        link = duosync.link_for(int(task["id"]))
-        if link and not link.get("gone"):
+        if duosync.on_duo(duosync.link_for(int(task["id"]))):
             st.badge("duo", icon=":material/group:", color="blue")
     at = planning.task_times().get(int(task["id"])) if task.get("id") is not None else None
     if at:

@@ -4,10 +4,11 @@ The duo tracker (the Telegram bot, the website, the Android app and its
 widgets) is one hub: every spoke reads and writes the same API. This module
 makes the tracker one more spoke:
 
-- **Out.** A task made here can be sent to the duo tracker as a one-time
-  task on its day, for you or for both of you. From then on renaming it,
+- **Out.** Every task here with a day from today on goes to the duo tracker
+  as a one-time task on that day, for you (or for both of you, if you say
+  so), unless you switch it off for that task. From then on renaming it,
   moving it, giving it a time, ticking it or deleting it here does the same
-  there.
+  there, and a day or deletion changed there comes back here.
 - **In.** Your duo tasks for today (and yesterday while it is still open)
   come into this tracker as tasks on that day, filed under the track whose
   name matches the duo area — the plan's areas are this tracker's tracks —
@@ -47,7 +48,10 @@ _pulling = False  # while a pull writes tasks, nothing is pushed back out
 
 def links() -> dict[int, dict]:
     """{tracker task id: {"task": duo task id, "day": "YYYY-MM-DD",
-    "origin": "tracker" | "duo", "gone": bool}}"""
+    "origin": "tracker" | "duo" | "off", "gone": bool}}
+
+    ``origin: off`` means "never send this one"; ``gone`` means it was
+    deleted here and must not come back."""
     try:
         raw = json.loads(db.get_setting(KEY) or "{}")
     except ValueError:
@@ -70,6 +74,18 @@ def link_for(task_id: int) -> dict | None:
     return links().get(int(task_id))
 
 
+def on_duo(link: dict | None) -> bool:
+    """A live link: the task is on Duo right now."""
+    return bool(link) and link.get("origin") != "off" and not link.get("gone")
+
+
+def opt_out(task_id: int) -> None:
+    """Keep this task off Duo, now and on later pulls."""
+    data = links()
+    data[int(task_id)] = {"task": "off", "day": "", "origin": "off"}
+    _save(data)
+
+
 def set_link(task_id: int, duo_task_id: str, day: str, origin: str) -> None:
     data = links()
     data[int(task_id)] = {"task": str(duo_task_id), "day": day, "origin": origin}
@@ -83,7 +99,7 @@ def unlink(task_id: int) -> None:
 
 
 def _by_occurrence(data: dict[int, dict]) -> dict[tuple[str, str], int]:
-    return {(v["task"], v["day"]): k for k, v in data.items()}
+    return {(v["task"], v["day"]): k for k, v in data.items() if v.get("origin") != "off"}
 
 
 # --- where an incoming task is filed ------------------------------------------------
@@ -115,7 +131,7 @@ def send(task_id: int, both: bool = False) -> str:
     t = planning.get_task(task_id)
     if t is None:
         raise duo.DuoError("That task is gone.")
-    if link_for(task_id):
+    if on_duo(link_for(task_id)):
         return "Already on Duo."
     day = t["day"] or date.today().isoformat()
     me = duo.me()
@@ -135,7 +151,7 @@ def push_edit(task_id: int, fields: dict) -> None:
     if _pulling:
         return
     link = link_for(task_id)
-    if not link or not duo.active():
+    if not on_duo(link) or not duo.active():
         return
     body: dict = {}
     if "title" in fields and fields["title"]:
@@ -167,7 +183,7 @@ def push_delete(task_id: int) -> None:
     if _pulling:
         return
     link = link_for(task_id)
-    if not link:
+    if not on_duo(link):
         return
     if link["origin"] == "tracker" and duo.active():
         try:
@@ -181,11 +197,11 @@ def push_delete(task_id: int) -> None:
 
 
 def remove(task_id: int) -> str:
-    """Take a task off Duo without deleting it here."""
+    """Take a task off Duo without deleting it here, and keep it off."""
     link = link_for(task_id)
-    if not link:
-        return "It was not on Duo."
-    push_delete(task_id)
+    if on_duo(link):
+        push_delete(task_id)
+    opt_out(task_id)
     return "Taken off Duo."
 
 
@@ -240,6 +256,26 @@ def pull(force: bool = False) -> dict:
 
     _pulling = True
     try:
+        # The task itself changed there: moved to another day, or deleted.
+        if live:
+            for tid, link in list(data.items()):
+                if not on_duo(link) or link["origin"] != "tracker":
+                    continue
+                lt = live.get(link["task"])
+                if lt is None:
+                    # Deleted on the website or in the app.
+                    t = planning.get_task(tid)
+                    if t is not None and t["status"] == "todo":
+                        planning.delete_task(tid)
+                        counts["removed"] += 1
+                    data.pop(tid, None)
+                    continue
+                when = str((lt.get("schedule") or {}).get("date") or "")[:10]
+                if when and when != link["day"]:
+                    planning.update_task(tid, day=when)
+                    link["day"] = when
+                    counts["updated"] += 1
+
         # What is there: bring in, or bring up to date.
         for (duo_task_id, day), o in occurrences.items():
             tid = seen.get((duo_task_id, day))
@@ -284,6 +320,8 @@ def pull(force: bool = False) -> dict:
         # never started here goes too. Yesterday is left alone - its tasks
         # drop off the board when the day closes, which is not a deletion.
         for tid, link in list(data.items()):
+            if link.get("origin") == "off":
+                continue
             if link.get("gone"):
                 if link["day"] < today:
                     data.pop(tid, None)  # old enough to forget
@@ -300,10 +338,31 @@ def pull(force: bool = False) -> dict:
             else:
                 data.pop(tid, None)  # keep the task here, just unlinked
         _save(data)
+
+        # Everything here with a day from today on is on Duo too.
+        me_id = me
+        for r in planning.board().to_dict("records"):
+            tid = int(r["id"])
+            if tid in data or r["status"] not in ("todo", "doing") or not r.get("day"):
+                continue
+            day = r["day"] if isinstance(r["day"], str) else str(r["day"])[:10]
+            if day < today:
+                continue
+            try:
+                created = duo.create_task(
+                    r["title"], day, times.get(tid), [me_id], area=r.get("track") or "",
+                )
+            except duo.DuoError:
+                break  # the duo tracker is unhappy; try again next pull
+            data[tid] = {"task": created["_id"], "day": day, "origin": "tracker"}
+            counts["sent"] = counts.get("sent", 0) + 1
+        _save(data)
     finally:
         _pulling = False
 
     if counts["new"]:
         st.toast(f"{counts['new']} task{'s' if counts['new'] != 1 else ''} came in from Duo", icon=":material/sync:")
+    if counts.get("sent"):
+        st.toast(f"{counts['sent']} task{'s' if counts['sent'] != 1 else ''} sent to Duo", icon=":material/sync:")
     return counts
 
