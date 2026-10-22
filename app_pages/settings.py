@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from tracker import cloud, db, profiles, scoring, structure, ui
+from tracker import cloud, db, duo, profiles, scoring, structure, ui
 
 ui.page_header(
     "Settings",
@@ -197,6 +197,20 @@ with st.container(border=True):
                     icon=":material/check:",
                 )
                 st.rerun()
+        if duo.active():
+            if st.button(
+                "Send the plan to the duo tracker",
+                key="profile_push_duo",
+                icon=":material/cloud_upload:",
+                help="Replaces the plan the duo website and app show (its Plan page) "
+                "with the notebook page as it is here: Li's column, Zen's column and "
+                "the shared Lizen column. Tasks and goals there are not touched.",
+            ):
+                try:
+                    sent = duo.push_structure(profiles.duo_structure())
+                    st.toast(f"The duo tracker now shows {len(sent)} areas", icon=":material/check:")
+                except duo.DuoError as exc:
+                    st.toast(str(exc), icon=":material/error:")
 
     st.markdown("**Tracks**")
     trk_edit = structure.tracks_editable()

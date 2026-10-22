@@ -155,10 +155,25 @@ def month(year: int, month_: int) -> dict:
     return _request("GET", f"/api/range?from={first.isoformat()}&to={last.isoformat()}")
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def structure() -> list[dict]:
+    """The plan as the duo tracker holds it: [{owner, area, items}]."""
+    return _request("GET", "/api/structure")
+
+
+def push_structure(rows: list[dict]) -> list[dict]:
+    """Replace the duo tracker's plan with these rows (owner li / zen / lizen,
+    area, items). The website's Plan page and the app's Tasks tab read it."""
+    out = _request("PUT", "/api/structure", rows, auth=True)
+    structure.clear()
+    return out
+
+
 def refresh() -> None:
     board.clear()
     week.clear()
     month.clear()
+    structure.clear()
 
 
 def mark(task_id: str, day: str, action: str, amount: int = 1) -> dict:

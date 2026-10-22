@@ -101,6 +101,16 @@ ACCOUNTS = {
 }
 
 
+def duo_structure() -> list[dict]:
+    """The same page in the shape the duo tracker stores: one row per area,
+    owned by li, zen or lizen, in notebook order."""
+    rows = []
+    for owner, tracks in (("li", LI), ("lizen", LIZEN), ("zen", ZEN)):
+        for key, name, icon, color, goal, cats in tracks:
+            rows.append({"owner": owner, "area": name, "items": list(cats)})
+    return rows
+
+
 def for_email(email: str | None) -> str | None:
     return ACCOUNTS.get((email or "").strip().lower())
 
