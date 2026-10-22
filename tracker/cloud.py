@@ -341,10 +341,13 @@ def activate() -> None:
             # A new account starts blank — the structure is theirs to build,
             # and the demo is the worked example. Only the measuring lenses
             # are planted, and even those are editable.
-            from tracker import db, seed
+            from tracker import db, profiles, seed
 
             db.init(plant=False)
             seed.plant_minimal()
+            # The two accounts from the notebook page start with their own
+            # plan already laid out; anyone else starts blank.
+            profiles.plant_for(email)
 
 
 def _landing() -> None:

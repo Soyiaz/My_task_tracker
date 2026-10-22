@@ -187,6 +187,28 @@ password = "<your own duo password>"
 email = "<your account email>"
 ```
 
+With accounts, give each person their own duo password instead, keyed by the
+email they sign in with; the signed-in account's entry is the one used, and
+an account without one gets no bridge:
+
+```toml
+[duo]
+url = "https://<the duo server>"
+
+[duo.accounts."li@example.com"]
+password = "<li's duo password>"
+
+[duo.accounts."zen@example.com"]
+password = "<zen's duo password>"
+```
+
+Those same two accounts also start with their own plan: the moment either of
+them signs in for the first time, the tracks and categories from the
+notebook page — Li's own, Zen's own, and the *Lizen* column both share — are
+laid out in their blank tracker (`tracker/profiles.py`). Anyone can also add
+them later with one click on **Settings**, under *Start from a ready-made
+plan*; only what is missing is added.
+
 Without it, the Duo page shows these setup steps and nothing else changes.
 
 ## The loop

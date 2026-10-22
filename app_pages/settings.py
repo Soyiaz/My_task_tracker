@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from tracker import db, scoring, structure, ui
+from tracker import cloud, db, profiles, scoring, structure, ui
 
 ui.page_header(
     "Settings",
@@ -177,6 +177,26 @@ with st.container(border=True):
         "Rename or delete any of them and grow your own — every page, form, "
         "chart and report follows whatever this says."
     )
+
+    with st.container(horizontal=True, vertical_alignment="center"):
+        st.markdown("Start from a ready-made plan:", width="content")
+        for _key, _prof in profiles.PROFILES.items():
+            if st.button(
+                f"{_prof['label']}'s plan",
+                key=f"profile_{_key}",
+                icon=":material/auto_awesome:",
+                help="Adds the tracks and categories from the notebook page that "
+                "are not here yet. Nothing already in the tracker is touched.",
+            ):
+                _added = profiles.plant(_key)
+                cloud.mark_dirty()
+                st.toast(
+                    f"Added {_added['tracks']} tracks and {_added['categories']} categories"
+                    if _added["tracks"]
+                    else "Everything from that plan is already here",
+                    icon=":material/check:",
+                )
+                st.rerun()
 
     st.markdown("**Tracks**")
     trk_edit = structure.tracks_editable()

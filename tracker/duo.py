@@ -31,23 +31,42 @@ TIMEOUT = 8  # seconds — the bridge must never hold up a tick for long
 # (not happening today) becomes an excuse, which costs no XP but is limited.
 MIRROR = {"done": "done", "todo": "undo", "dropped": "excused"}
 
-_token: dict = {"value": None, "expires": 0.0}
+_tokens: dict = {}  # password -> (token, expiry); one per duo account
+
+
+def _token_slot() -> dict:
+    return _tokens.setdefault(str(_settings().get("password")), {"value": None, "expires": 0.0})
 
 
 # --- configuration -----------------------------------------------------------
 
 
 def _settings() -> dict:
+    """The duo credentials for this session.
+
+    ``[duo]`` carries the server address and, for a single-user install, one
+    password. With accounts, each person has their own duo password under
+    ``[duo.accounts]`` keyed by their email, and the signed-in account's entry
+    wins — so Li's ticks land on Lily's duo side and Zen's on Zen's."""
     try:
-        if "duo" in st.secrets:
-            return dict(st.secrets["duo"])
+        base = dict(st.secrets["duo"]) if "duo" in st.secrets else None
     except Exception:
-        pass
-    return {
-        "url": os.environ.get("DUO_URL"),
-        "password": os.environ.get("DUO_PASSWORD"),
-        "email": os.environ.get("DUO_EMAIL"),
-    }
+        base = None
+    if base is None:
+        base = {
+            "url": os.environ.get("DUO_URL"),
+            "password": os.environ.get("DUO_PASSWORD"),
+            "email": os.environ.get("DUO_EMAIL"),
+        }
+    accounts = {str(k).strip().lower(): dict(v) for k, v in (base.pop("accounts", None) or {}).items()}
+    if accounts and cloud.enabled():
+        me_ = (cloud.current_email() or "").strip().lower()
+        own = accounts.get(me_)
+        if own:
+            return {**base, **own, "email": me_}
+        # Accounts are configured but this one is not among them: no bridge.
+        base.pop("password", None)
+    return base
 
 
 def configured() -> bool:
@@ -79,6 +98,7 @@ class DuoError(Exception):
 
 
 def _login() -> str:
+    _token = _token_slot()
     if _token["value"] and time.time() < _token["expires"]:
         return _token["value"]
     r = requests.post(
@@ -102,7 +122,7 @@ def _request(method: str, path: str, body: dict | None = None, auth: bool = Fals
     except requests.RequestException as exc:
         raise DuoError("The duo tracker could not be reached.") from exc
     if r.status_code == 401 and auth:
-        _token["value"] = None  # expired or rotated: log in again once
+        _token_slot()["value"] = None  # expired or rotated: log in again once
         return _request(method, path, body, auth)
     data = r.json() if r.content else {}
     if not r.ok:
