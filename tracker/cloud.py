@@ -328,7 +328,13 @@ def activate() -> None:
         filesdir.mkdir(parents=True, exist_ok=True)
         brand_new = False
         if not dbfile.exists():
-            remote = _get(f"{uid}/tracker.db")
+            # Strict: only "no such file" means a new account. An outage must
+            # never start a blank tracker, or the next save would overwrite
+            # the real one in storage.
+            try:
+                remote = _get_strict(f"{uid}/tracker.db")
+            except Exception as exc:
+                _storage_down(exc)
             if remote:
                 dbfile.write_bytes(remote)
             else:
@@ -348,6 +354,21 @@ def activate() -> None:
             # The two accounts from the notebook page start with their own
             # plan already laid out; anyone else starts blank.
             profiles.plant_for(email)
+
+
+def _storage_down(exc: Exception) -> None:
+    """Storage cannot be reached: say so and stop, touching nothing."""
+    import streamlit as st
+
+    st.error(
+        "Your tracker could not be loaded: the storage it lives in did not answer. "
+        "Nothing has been changed. Try again in a minute.",
+        icon=":material/cloud_off:",
+    )
+    st.caption(f"Details for whoever runs the app: {type(exc).__name__}.")
+    if st.button("Try again", icon=":material/refresh:"):
+        st.rerun()
+    st.stop()
 
 
 def _landing() -> None:
